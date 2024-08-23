@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grid with BFS Transition Arrows</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 1px solid #000;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 10px;
+            border: 1px solid #000;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+   <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
+</head>
+<body>
+    <div id="info">Total Probability at (0,1): 0</div>
+    <canvas id="myCanvas" width="800" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('myCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridSize = 40; // Size of each grid cell
+        const rows = Math.floor(canvas.height / gridSize);
+        const cols = Math.floor(canvas.width / gridSize);
+
+        // Arrow probabilities
+        const probabilities32 = [
+            { prob: 0.3717, dx:  0, dy: -2 },
+            { prob: 0.2926, dx: -2, dy:  0 },
+            { prob: 0.3358, dx: -1, dy: -1 }
+        ];
+
+        const probabilities22 = [
+            { prob: 0.2276, dx:  0, dy: -2 },
+            { prob: 0.4483, dx: -2, dy:  0 },
+            { prob: 0.3241, dx: -1, dy: -1 }
+        ];
+
+        const probabilities12 = [
+            { prob: 0.2546, dx: 0, dy: -1 },
+            { prob: 0.7454, dx: -1, dy: 0 }
+        ];
+
+        const probabilities31 = [
+            { prob: 0.6597, dx: 0, dy:  -1 },
+            { prob: 0.3403, dx: -1, dy: 0 }
+        ];
+
+        const probabilities21 = [
+            { prob: 0.5787, dx:  0, dy: -1 },
+            { prob: 0.4213, dx: -1, dy:  0 }
+        ];
+
+        const probabilities11 = [
+            { prob: 0.4167, dx:  0, dy: -1 },
+            { prob: 0.5833, dx: -1, dy: 0 }
+        ];
+
+        const probabilitiesMap = new Map();
+        let currentCell = { x: -1, y: -1 }; // Cache for current cell
+
+        function drawGrid() {
+            ctx.strokeStyle = '#aaa';
+            ctx.lineWidth = 1;
+
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function drawArrow(fromX, fromY, toX, toY, thickness) {
+            const headLength = thickness * 0.3; // Adjust head length (10 times smaller)
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+
+            ctx.lineWidth = thickness;
+            ctx.strokeStyle = 'khaki'; // Set arrow line color to yellow
+            ctx.fillStyle = 'gold'; // Set arrowhead fill color to yellow
+
+            // Draw the main line
+            ctx.beginPath();
+            ctx.moveTo(fromX, fromY);
+            ctx.lineTo(toX, toY);
+            ctx.stroke();
+
+            // Draw the arrow head
+            ctx.beginPath();
+            ctx.moveTo(toX, toY);
+            ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
+            ctx.lineTo(toX, toY);
+            ctx.fill();
+        }
+
+        function drawBFSArrows(startX, startY) {
+            const queue = [{ x: startX, y: startY, cumulativeProb: 1 }];
+            const visited = new Map();
+
+            while (queue.length > 0) {
+                const { x, y, cumulativeProb } = queue.shift();
+                const key = `${x},${y}`;
+
+                // Check if this cell has been processed with a higher cumulative probability
+                if (visited.has(key) && visited.get(key) >= cumulativeProb) {
+                    continue;
+                }
+                visited.set(key, cumulativeProb);
+
+                const centerX = x * gridSize + gridSize / 2;
+                const centerY = y * gridSize + gridSize / 2;
+
+                let arrows = null;
+
+                if (x >= 3 && y > 1) {
+                    arrows = probabilities32;
+                } else if (x == 2 && y > 1) {
+                    arrows = probabilities22;
+                } else if (x == 1 && y > 1) {
+                    arrows = probabilities12;
+                } else if (x >= 3 && y == 1) {
+                    arrows = probabilities31;
+                } else if (x == 2 && y == 1) {
+                    arrows = probabilities21;
+                } else if (x == 1 && y == 1) {
+                    arrows = probabilities11;
+                } else {
+                    continue; // No arrows to draw for this cell
+                }
+
+                arrows.forEach(arrow => {
+                    const newX = x + arrow.dx;
+                    const newY = y + arrow.dy;
+                    const toX = centerX + arrow.dx * gridSize;
+                    const toY = centerY + arrow.dy * gridSize;
+                    const thickness = arrow.prob * cumulativeProb * 50; // Adjust thickness factor (5 times the original)
+                    drawArrow(centerX, centerY, toX, toY, thickness);
+                    if (newX >= 0 && newX < cols && newY >= 0 && newY < rows) {
+                        queue.push({ x: newX, y: newY, cumulativeProb: cumulativeProb * arrow.prob });
+                    }
+                });
+            }
+
+let entries = visited.entries();
+let totalProb = 0;
+for (const entry of entries) {
+  if (entry[0].includes('0,')) { totalProb += entry[1]; }
+}
+
+            document.getElementById('info').textContent = `Total Probability at (0,1): ${totalProb.toFixed(4)}`;
+        }
+
+        function getMousePosition(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            return { x, y };
+        }
+
+        function updateDrawing(x, y) {
+            if (currentCell.x !== x || currentCell.y !== y) { // Check if the mouse has moved to a different cell
+                currentCell = { x, y };
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawGrid();
+                drawBFSArrows(x, y); // Use BFS to draw arrows
+            }
+        }
+
+        canvas.addEventListener('mousemove', (event) => {
+            const { x, y } = getMousePosition(event);
+            const cellX = Math.floor(x / gridSize);
+            const cellY = Math.floor(y / gridSize);
+            updateDrawing(cellX, cellY);
+        });
+
+        // Initial drawing
+        drawGrid();
+    </script>
+</body>
+</html>
