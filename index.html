@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,9 +14,11 @@
             margin: 0;
             background-color: #f0f0f0;
         }
+
         canvas {
             border: 1px solid #000;
         }
+
         #info {
             position: absolute;
             top: 20px;
@@ -26,29 +29,31 @@
             font-family: Arial, sans-serif;
         }
     </style>
-   <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
 </head>
+
 <body>
-    <div id="info">Total Probability at (0,1): 0</div>
+    <div id="X">Total X: 0</div>
+    <div id="Y">Total Y: 0</div>
     <canvas id="myCanvas" width="800" height="600"></canvas>
     <script>
         const canvas = document.getElementById('myCanvas');
         const ctx = canvas.getContext('2d');
-        const gridSize = 40; // Size of each grid cell
+        const gridSize = 80; // Size of each grid cell
         const rows = Math.floor(canvas.height / gridSize);
         const cols = Math.floor(canvas.width / gridSize);
 
         // Arrow probabilities
-        const probabilities32 = [
-            { prob: 0.3717, dx:  0, dy: -2 },
-            { prob: 0.2926, dx: -2, dy:  0 },
-            { prob: 0.3358, dx: -1, dy: -1 }
+        const probabilities32 = [,
+            { prob: 0.3358, dx: -1, dy: -1 },
+            { prob: 0.3717, dx: 0, dy: -2 },
+            { prob: 0.2926, dx: -2, dy: 0 }
         ];
 
         const probabilities22 = [
-            { prob: 0.2276, dx:  0, dy: -2 },
-            { prob: 0.4483, dx: -2, dy:  0 },
-            { prob: 0.3241, dx: -1, dy: -1 }
+            { prob: 0.3241, dx: -1, dy: -1 },
+            { prob: 0.2276, dx: 0, dy: -2 },
+            { prob: 0.4483, dx: -2, dy: 0 }
         ];
 
         const probabilities12 = [
@@ -57,17 +62,17 @@
         ];
 
         const probabilities31 = [
-            { prob: 0.6597, dx: 0, dy:  -1 },
+            { prob: 0.6597, dx: 0, dy: -1 },
             { prob: 0.3403, dx: -1, dy: 0 }
         ];
 
         const probabilities21 = [
-            { prob: 0.5787, dx:  0, dy: -1 },
-            { prob: 0.4213, dx: -1, dy:  0 }
+            { prob: 0.5787, dx: 0, dy: -1 },
+            { prob: 0.4213, dx: -1, dy: 0 }
         ];
 
         const probabilities11 = [
-            { prob: 0.4167, dx:  0, dy: -1 },
+            { prob: 0.4167, dx: 0, dy: -1 },
             { prob: 0.5833, dx: -1, dy: 0 }
         ];
 
@@ -98,8 +103,8 @@
             const angle = Math.atan2(toY - fromY, toX - fromX);
 
             ctx.lineWidth = thickness;
-            ctx.strokeStyle = 'khaki'; // Set arrow line color to yellow
-            ctx.fillStyle = 'gold'; // Set arrowhead fill color to yellow
+            ctx.strokeStyle = 'khaki'; // Set arrow line color
+            ctx.fillStyle = 'gold'; // Set arrowhead fill color
 
             // Draw the main line
             ctx.beginPath();
@@ -117,18 +122,15 @@
         }
 
         function drawBFSArrows(startX, startY) {
+            let totalProbX = 0;
+            let totalProbY = 0;
             const queue = [{ x: startX, y: startY, cumulativeProb: 1 }];
-            const visited = new Map();
 
             while (queue.length > 0) {
+                //queue.sort((a, b) => (a.x + a.y) - (b.x + b.y));
+                queue.sort((a, b) => (a.x + a.y) - (b.x + b.y));
                 const { x, y, cumulativeProb } = queue.shift();
                 const key = `${x},${y}`;
-
-                // Check if this cell has been processed with a higher cumulative probability
-                if (visited.has(key) && visited.get(key) >= cumulativeProb) {
-                    continue;
-                }
-                visited.set(key, cumulativeProb);
 
                 const centerX = x * gridSize + gridSize / 2;
                 const centerY = y * gridSize + gridSize / 2;
@@ -156,21 +158,24 @@
                     const newY = y + arrow.dy;
                     const toX = centerX + arrow.dx * gridSize;
                     const toY = centerY + arrow.dy * gridSize;
-                    const thickness = arrow.prob * cumulativeProb * 50; // Adjust thickness factor (5 times the original)
+                    const thickness = arrow.prob * cumulativeProb * gridSize * 1.3; // Adjust thickness factor (5 times the original)
                     drawArrow(centerX, centerY, toX, toY, thickness);
+
+                    if (newX == 0 ) { totalProbX += cumulativeProb* arrow.prob;}
+                    if (newY == 0 ) { totalProbY += cumulativeProb* arrow.prob;}
                     if (newX >= 0 && newX < cols && newY >= 0 && newY < rows) {
-                        queue.push({ x: newX, y: newY, cumulativeProb: cumulativeProb * arrow.prob });
+                        let existingElement = _.find(queue, { x: newX, y: newY });
+                        if (existingElement) {
+                            existingElement.cumulativeProb += cumulativeProb * arrow.prob;
+                        } else {
+                            queue.push({ x: newX, y: newY, cumulativeProb: cumulativeProb * arrow.prob });
+                        }
                     }
                 });
             }
 
-let entries = visited.entries();
-let totalProb = 0;
-for (const entry of entries) {
-  if (entry[0].includes('0,')) { totalProb += entry[1]; }
-}
-
-            document.getElementById('info').textContent = `Total Probability at (0,1): ${totalProb.toFixed(4)}`;
+            document.getElementById('X').textContent = `Attacker Win: ${(100*totalProbX).toFixed(3)}%`;
+            document.getElementById('Y').textContent = `Defender Win: ${(100*totalProbY).toFixed(3)}%`;
         }
 
         function getMousePosition(event) {
@@ -200,4 +205,5 @@ for (const entry of entries) {
         drawGrid();
     </script>
 </body>
+
 </html>
