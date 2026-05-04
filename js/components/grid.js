@@ -113,16 +113,17 @@ export function mount(root) {
     const { maxAtt, maxDef } = state;
     const cell = Math.min(72, Math.floor(720 / Math.max(maxAtt + 1, maxDef + 1)));
     state.cell = cell;
-    state.histSize = Math.max(48, Math.round(cell * 1.4));
-    canvas.width = state.histSize + (maxAtt + 1) * cell;
-    canvas.height = (maxDef + 1) * cell + state.histSize;
+    state.histSize = Math.max(80, Math.round(cell * 2.2));
+    state.labelMargin = 18; // dedicated space for 0%/max% tick labels
+    canvas.width = state.histSize + (maxAtt + 1) * cell + state.labelMargin;
+    canvas.height = (maxDef + 1) * cell + state.histSize + state.labelMargin;
     bgCanvas.width = canvas.width;
     bgCanvas.height = canvas.height;
     state.bgDirty = true;
   }
 
   function gridLeft() { return state.histSize; }
-  function gridBottom() { return canvas.height - state.histSize; }
+  function gridBottom() { return canvas.height - state.histSize - state.labelMargin; }
 
   function cellCenter(ax, dy) {
     // ax = attackers (column), dy = defenders (row, drawn from bottom up).
@@ -347,6 +348,39 @@ export function mount(root) {
 
     const padding = 4;
     const barArea = histSize - padding * 2;
+    const maxPct = Math.round(maxP * 100);
+
+    // ----- Axis baselines + 0% / max% gridlines -----
+    ctx.strokeStyle = 'rgba(230,237,243,0.35)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    // Bottom: 0% line (touching grid) and max% line at the deepest point.
+    ctx.beginPath();
+    ctx.moveTo(gL + cell, gB + padding + 0.5);
+    ctx.lineTo(gL + (maxAtt + 1) * cell, gB + padding + 0.5);
+    ctx.moveTo(gL + cell, gB + padding + barArea + 0.5);
+    ctx.lineTo(gL + (maxAtt + 1) * cell, gB + padding + barArea + 0.5);
+    // Left: 0% line (touching grid) and max% line at the leftmost extent.
+    ctx.moveTo(gL - padding + 0.5, gB - cell);
+    ctx.lineTo(gL - padding + 0.5, gB - (maxDef + 1) * cell);
+    ctx.moveTo(gL - padding - barArea + 0.5, gB - cell);
+    ctx.lineTo(gL - padding - barArea + 0.5, gB - (maxDef + 1) * cell);
+    ctx.stroke();
+
+    ctx.font = '500 10px var(--mono, monospace)';
+    ctx.fillStyle = 'rgba(230,237,243,0.7)';
+    // Tick labels live in the dedicated label margins so they never overlap
+    // the grid cells.
+    // Bottom-axis ticks (0% near grid, max% deepest): right margin.
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('0%', gL + (maxAtt + 1) * cell + 4, gB + padding);
+    ctx.fillText(`${maxPct}%`, gL + (maxAtt + 1) * cell + 4, gB + padding + barArea);
+    // Left-axis ticks (0% near grid, max% leftmost): bottom margin.
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('0%', gL - padding, gB + histSize + 2);
+    ctx.fillText(`${maxPct}%`, gL - padding - barArea, gB + histSize + 2);
 
     // ----- Bottom bar chart: P(attacker survives with `aa` armies) -----
     // Each bar sits in the column directly below its (aa, 0) terminal cell;
