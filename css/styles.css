@@ -729,6 +729,7 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 .odds-matrix-scroll {
   overflow-x: auto;
   padding-bottom: 4px;
+  position: relative;
 }
 
 .odds-matrix {
@@ -745,12 +746,12 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 .odds-matrix .mc-head,
 .odds-matrix .mc-rh,
 .odds-matrix .mc-corner {
-  height: var(--mc-size);
   display: flex;
   align-items: center;
   justify-content: center;
   border-right: 1px solid rgba(48, 54, 61, 0.55);
   border-bottom: 1px solid rgba(48, 54, 61, 0.55);
+  overflow: hidden;
 }
 
 .odds-matrix .mc-corner,
@@ -772,6 +773,7 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 .odds-matrix .mc-count {
   color: var(--gold-bright);
   font-size: 9px;
+  font-weight: 700;
 }
 
 .odds-matrix .mc-rh.mc-count {
@@ -781,11 +783,145 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 
 .odds-matrix .mc-cell {
   color: var(--text);
+  font-weight: 600;
 }
 
-.odds-matrix .mc-cell.def { background: rgba(86, 211, 100, 0.22); }
-.odds-matrix .mc-cell.att { background: rgba(240, 101, 96, 0.22); }
-.odds-matrix .mc-cell.both { background: rgba(110, 118, 129, 0.22); }
+.odds-matrix .mc-cell.def { background: rgba(86, 211, 100, 0.38); color: #b9f0c4; }
+.odds-matrix .mc-cell.att { background: rgba(240, 101, 96, 0.38); color: #ffc8c4; }
+.odds-matrix .mc-cell.both { background: rgba(110, 118, 129, 0.20); color: #c2c8d1; }
+
+/* Matrix → outcome-bar reduction */
+.odds-reduce-btn {
+  margin: 8px 0;
+  padding: 4px 10px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.odds-reduce-btn:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+}
+
+.odds-reduce-overlay {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 350ms ease 400ms;
+}
+
+.odds-reduce-overlay.shown { opacity: 1; }
+
+.odds-reduce-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-family: var(--mono);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  padding: 0 4px;
+}
+
+.odds-reduce-pct {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.odds-reduce-name {
+  font-size: 10px;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+.odds-reduce-seg.def { color: #d6f5dd; }
+.odds-reduce-seg.att { color: #ffd7d4; }
+.odds-reduce-seg.both { color: #d8dde6; }
+
+/* Reductions tab — presentation-mode roll matrix. */
+.red-panel { padding-bottom: 32px; }
+
+.red-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 16px 0 4px;
+}
+
+.red-pills button {
+  padding: 6px 14px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+  border: 1px solid var(--border-bright);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.red-pills button:hover { color: var(--gold-bright); border-color: var(--gold); }
+.red-pills button.active {
+  background: var(--gold);
+  border-color: var(--gold-bright);
+  color: var(--bg-1, #0d1117);
+}
+
+.red-subtitle {
+  margin: 6px 0 18px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+}
+
+.red-stage {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+  min-height: 200px;
+}
+
+.red-matrix-wrap {
+  position: relative;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.red-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.red-toggle {
+  padding: 10px 22px;
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.red-toggle:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: var(--bg-2, #161b22);
+}
 
 /* Help text */
 .hint {
