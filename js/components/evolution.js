@@ -51,6 +51,7 @@ export function mount(root) {
     D: 20,
     round: 0,
     dp: null,
+    maxSeen: null, // per-cell max probability ever seen — leaves a fading trail of where mass has been
     history: [],   // [{round, attAbs, defAbs, interior, entropy}]
     playing: false,
     speed: 4,
@@ -165,10 +166,24 @@ export function mount(root) {
     pause();
     state.round = 0;
     state.dp = initialDistribution(state.A, state.D);
+    state.maxSeen = newMaxSeen(state.A, state.D);
+    updateMaxSeen(state.maxSeen, state.dp, state.A, state.D);
     state.history = [snapshot(state.dp, 0)];
     slider.value = '0';
     slider.max = String(estimateMaxRounds(state.A, state.D));
     render();
+  }
+
+  function newMaxSeen(A, D) {
+    return Array.from({ length: A + 1 }, () => new Float64Array(D + 1));
+  }
+
+  function updateMaxSeen(ms, dp, A, D) {
+    for (let a = 0; a <= A; a++) {
+      for (let d = 0; d <= D; d++) {
+        if (dp[a][d] > ms[a][d]) ms[a][d] = dp[a][d];
+      }
+    }
   }
 
   function snapshot(dp, round) {
@@ -192,6 +207,7 @@ export function mount(root) {
     if (state.history[state.history.length - 1].interior < 1e-12) return false;
     state.dp = stepDistribution(state.dp, state.A, state.D);
     state.round += 1;
+    updateMaxSeen(state.maxSeen, state.dp, state.A, state.D);
     state.history.push(snapshot(state.dp, state.round));
     if (state.round > parseInt(slider.max, 10)) slider.max = String(state.round);
     slider.value = String(state.round);
@@ -204,6 +220,8 @@ export function mount(root) {
     if (target < state.round) {
       // Cheaper to reset and walk forward than to invert the operator.
       state.dp = initialDistribution(state.A, state.D);
+      state.maxSeen = newMaxSeen(state.A, state.D);
+      updateMaxSeen(state.maxSeen, state.dp, state.A, state.D);
       state.round = 0;
       state.history = [snapshot(state.dp, 0)];
     }
@@ -255,7 +273,7 @@ export function mount(root) {
   }
 
   function drawHeatmap() {
-    const { A, D, dp, showAbsorbed, logScale } = state;
+    const { A, D, dp, maxSeen, showAbsorbed, logScale } = state;
     const W = canvas.width, H = canvas.height;
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, W, H);
@@ -266,11 +284,12 @@ export function mount(root) {
     const cellW = innerW / (A + 1);
     const cellH = innerH / (D + 1);
 
-    // Find max interior probability for normalization.
+    // Normalize against the largest interior value in the trail so the live
+    // distribution stays bright even after most mass has been absorbed.
     let maxInterior = 0;
     for (let a = 1; a <= A; a++) {
       for (let d = 1; d <= D; d++) {
-        if (dp[a][d] > maxInterior) maxInterior = dp[a][d];
+        if (maxSeen[a][d] > maxInterior) maxInterior = maxSeen[a][d];
       }
     }
     const norm = (p) => {
@@ -291,10 +310,15 @@ export function mount(root) {
       return { x, y, w: cellW, h: cellH };
     }
 
-    // Interior heatmap.
+    // Interior heatmap. Each cell shows the live distribution, but if the
+    // trail (max ever seen here) is brighter we draw a half-intensity echo so
+    // the path the mass swept through stays faintly visible.
     for (let a = 1; a <= A; a++) {
       for (let d = 1; d <= D; d++) {
-        const t = norm(dp[a][d]);
+        const tCur = norm(dp[a][d]);
+        const tTrail = norm(maxSeen[a][d]) * 0.5;
+        const t = Math.max(tCur, tTrail);
+        if (t <= 0) continue;
         const [r, g, b] = ramp(t);
         ctx.fillStyle = `rgb(${r},${g},${b})`;
         const { x, y, w, h } = rect(a, d);
