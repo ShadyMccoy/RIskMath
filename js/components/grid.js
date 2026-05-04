@@ -244,7 +244,7 @@ export function mount(root) {
   function drawPulse(arrow, t) {
     const { fromX, fromY, toX, toY, prob, seed } = arrow;
     if (prob < 0.0005) return;
-    const period = 1600; // ms per traversal
+    const period = 2800; // ms per traversal
     const phase = (((t + seed) % period) + period) % period / period;
     // ease so the dot accelerates slightly into the target
     const eased = phase * phase * (3 - 2 * phase);
@@ -252,10 +252,10 @@ export function mount(root) {
     const py = fromY + (toY - fromY) * eased;
     // Sin envelope so each pulse fades in, peaks mid-flight, fades out.
     const env = Math.sin(phase * Math.PI);
-    const r = Math.max(1.6, Math.min(state.cell * 0.13, prob * state.cell * 0.7 + 1.4));
-    const a = (0.55 + Math.min(0.4, prob * 1.5)) * env;
-    ctx.shadowColor = 'rgba(255,228,140,0.95)';
-    ctx.shadowBlur = 16 * env;
+    const r = Math.max(1.1, Math.min(state.cell * 0.09, prob * state.cell * 0.45 + 1.0));
+    const a = (0.3 + Math.min(0.25, prob * 1.0)) * env;
+    ctx.shadowColor = 'rgba(255,228,140,0.6)';
+    ctx.shadowBlur = 8 * env;
     ctx.fillStyle = `rgba(255,243,200,${a})`;
     ctx.beginPath();
     ctx.arc(px, py, r, 0, Math.PI * 2);
@@ -298,7 +298,7 @@ export function mount(root) {
         arrows.push({
           fromX: cx, fromY: cy, toX: tx, toY: ty,
           prob: flowProb,
-          seed: Math.random() * 1600,
+          seed: Math.random() * 2800,
         });
 
         if (newD === 0) attWin += flowProb;
