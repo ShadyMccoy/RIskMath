@@ -652,6 +652,106 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 .odds-bar .fill.att { background: var(--att); }
 .odds-bar .fill.def { background: var(--def); }
 
+/* Roll matrix (per-card disclosure) */
+.odds-matrix-wrap {
+  margin-top: 14px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.odds-matrix-wrap > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  user-select: none;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.odds-matrix-wrap > summary::-webkit-details-marker { display: none; }
+
+.odds-matrix-wrap > summary::before {
+  content: '▸';
+  display: inline-block;
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.odds-matrix-wrap[open] > summary::before { transform: rotate(90deg); }
+
+.odds-matrix-wrap > summary:hover { color: var(--gold-bright); }
+
+.odds-matrix-cap {
+  margin: 8px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.odds-matrix-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.odds-matrix {
+  --mc-size: 18px;
+  display: grid;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1;
+  width: max-content;
+  border: 1px solid var(--border);
+}
+
+.odds-matrix .mc-cell,
+.odds-matrix .mc-head,
+.odds-matrix .mc-rh,
+.odds-matrix .mc-corner {
+  height: var(--mc-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(48, 54, 61, 0.55);
+  border-bottom: 1px solid rgba(48, 54, 61, 0.55);
+}
+
+.odds-matrix .mc-corner,
+.odds-matrix .mc-head,
+.odds-matrix .mc-rh {
+  background: var(--bg-3);
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.odds-matrix .mc-label {
+  color: var(--text);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 6px;
+}
+
+.odds-matrix .mc-count {
+  color: var(--gold-bright);
+  font-size: 9px;
+}
+
+.odds-matrix .mc-rh.mc-count {
+  padding: 0 4px;
+  min-width: var(--mc-size);
+}
+
+.odds-matrix .mc-cell {
+  color: var(--text);
+}
+
+.odds-matrix .mc-cell.def { background: rgba(86, 211, 100, 0.22); }
+.odds-matrix .mc-cell.att { background: rgba(240, 101, 96, 0.22); }
+.odds-matrix .mc-cell.both { background: rgba(110, 118, 129, 0.22); }
+
 /* Help text */
 .hint {
   font-size: 12px;
