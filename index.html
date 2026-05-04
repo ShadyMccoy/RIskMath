@@ -1,209 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grid with BFS Transition Arrows</title>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
-
-        canvas {
-            border: 1px solid #000;
-        }
-
-        #info {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: white;
-            padding: 10px;
-            border: 1px solid #000;
-            font-family: Arial, sans-serif;
-        }
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risk Math · Battle Probability Console</title>
+  <meta name="description" content="Interactive Risk battle probability tools: heatmap, calculator, campaign planner, dice simulator, odds reference.">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='4' width='24' height='24' rx='5' fill='%23161b22' stroke='%23d4a72c' stroke-width='2'/%3E%3Ccircle cx='10' cy='10' r='2.5' fill='%23d4a72c'/%3E%3Ccircle cx='22' cy='10' r='2.5' fill='%23d4a72c'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23d4a72c'/%3E%3Ccircle cx='10' cy='22' r='2.5' fill='%23d4a72c'/%3E%3Ccircle cx='22' cy='22' r='2.5' fill='%23d4a72c'/%3E%3C/svg%3E">
 </head>
-
 <body>
-    <div id="X">Total X: 0</div>
-    <div id="Y">Total Y: 0</div>
-    <canvas id="myCanvas" width="800" height="600"></canvas>
-    <script>
-        const canvas = document.getElementById('myCanvas');
-        const ctx = canvas.getContext('2d');
-        const gridSize = 80; // Size of each grid cell
-        const rows = Math.floor(canvas.height / gridSize);
-        const cols = Math.floor(canvas.width / gridSize);
-
-        // Arrow probabilities
-        const probabilities32 = [,
-            { prob: 0.3358, dx: -1, dy: -1 },
-            { prob: 0.3717, dx: 0, dy: -2 },
-            { prob: 0.2926, dx: -2, dy: 0 }
-        ];
-
-        const probabilities22 = [
-            { prob: 0.3241, dx: -1, dy: -1 },
-            { prob: 0.2276, dx: 0, dy: -2 },
-            { prob: 0.4483, dx: -2, dy: 0 }
-        ];
-
-        const probabilities12 = [
-            { prob: 0.2546, dx: 0, dy: -1 },
-            { prob: 0.7454, dx: -1, dy: 0 }
-        ];
-
-        const probabilities31 = [
-            { prob: 0.6597, dx: 0, dy: -1 },
-            { prob: 0.3403, dx: -1, dy: 0 }
-        ];
-
-        const probabilities21 = [
-            { prob: 0.5787, dx: 0, dy: -1 },
-            { prob: 0.4213, dx: -1, dy: 0 }
-        ];
-
-        const probabilities11 = [
-            { prob: 0.4167, dx: 0, dy: -1 },
-            { prob: 0.5833, dx: -1, dy: 0 }
-        ];
-
-        const probabilitiesMap = new Map();
-        let currentCell = { x: -1, y: -1 }; // Cache for current cell
-
-        function drawGrid() {
-            ctx.strokeStyle = '#aaa';
-            ctx.lineWidth = 1;
-
-            for (let x = 0; x <= canvas.width; x += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, canvas.height);
-                ctx.stroke();
-            }
-
-            for (let y = 0; y <= canvas.height; y += gridSize) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvas.width, y);
-                ctx.stroke();
-            }
-        }
-
-        function drawArrow(fromX, fromY, toX, toY, thickness) {
-            const headLength = thickness * 0.3; // Adjust head length (10 times smaller)
-            const angle = Math.atan2(toY - fromY, toX - fromX);
-
-            ctx.lineWidth = thickness;
-            ctx.strokeStyle = 'khaki'; // Set arrow line color
-            ctx.fillStyle = 'gold'; // Set arrowhead fill color
-
-            // Draw the main line
-            ctx.beginPath();
-            ctx.moveTo(fromX, fromY);
-            ctx.lineTo(toX, toY);
-            ctx.stroke();
-
-            // Draw the arrow head
-            ctx.beginPath();
-            ctx.moveTo(toX, toY);
-            ctx.lineTo(toX - headLength * Math.cos(angle - Math.PI / 6), toY - headLength * Math.sin(angle - Math.PI / 6));
-            ctx.lineTo(toX - headLength * Math.cos(angle + Math.PI / 6), toY - headLength * Math.sin(angle + Math.PI / 6));
-            ctx.lineTo(toX, toY);
-            ctx.fill();
-        }
-
-        function drawBFSArrows(startX, startY) {
-            let totalProbX = 0;
-            let totalProbY = 0;
-            const queue = [{ x: startX, y: startY, cumulativeProb: 1 }];
-
-            while (queue.length > 0) {
-                //queue.sort((a, b) => (a.x + a.y) - (b.x + b.y));
-                queue.sort((a, b) => (a.x + a.y) - (b.x + b.y));
-                const { x, y, cumulativeProb } = queue.shift();
-                const key = `${x},${y}`;
-
-                const centerX = x * gridSize + gridSize / 2;
-                const centerY = y * gridSize + gridSize / 2;
-
-                let arrows = null;
-
-                if (x >= 3 && y > 1) {
-                    arrows = probabilities32;
-                } else if (x == 2 && y > 1) {
-                    arrows = probabilities22;
-                } else if (x == 1 && y > 1) {
-                    arrows = probabilities12;
-                } else if (x >= 3 && y == 1) {
-                    arrows = probabilities31;
-                } else if (x == 2 && y == 1) {
-                    arrows = probabilities21;
-                } else if (x == 1 && y == 1) {
-                    arrows = probabilities11;
-                } else {
-                    continue; // No arrows to draw for this cell
-                }
-
-                arrows.forEach(arrow => {
-                    const newX = x + arrow.dx;
-                    const newY = y + arrow.dy;
-                    const toX = centerX + arrow.dx * gridSize;
-                    const toY = centerY + arrow.dy * gridSize;
-                    const thickness = arrow.prob * cumulativeProb * gridSize * 1.3; // Adjust thickness factor (5 times the original)
-                    drawArrow(centerX, centerY, toX, toY, thickness);
-
-                    if (newX == 0 ) { totalProbX += cumulativeProb* arrow.prob;}
-                    if (newY == 0 ) { totalProbY += cumulativeProb* arrow.prob;}
-                    if (newX >= 0 && newX < cols && newY >= 0 && newY < rows) {
-                        let existingElement = _.find(queue, { x: newX, y: newY });
-                        if (existingElement) {
-                            existingElement.cumulativeProb += cumulativeProb * arrow.prob;
-                        } else {
-                            queue.push({ x: newX, y: newY, cumulativeProb: cumulativeProb * arrow.prob });
-                        }
-                    }
-                });
-            }
-
-            document.getElementById('X').textContent = `Attacker Win: ${(100*totalProbX).toFixed(3)}%`;
-            document.getElementById('Y').textContent = `Defender Win: ${(100*totalProbY).toFixed(3)}%`;
-        }
-
-        function getMousePosition(event) {
-            const rect = canvas.getBoundingClientRect();
-            const x = event.clientX - rect.left;
-            const y = event.clientY - rect.top;
-            return { x, y };
-        }
-
-        function updateDrawing(x, y) {
-            if (currentCell.x !== x || currentCell.y !== y) { // Check if the mouse has moved to a different cell
-                currentCell = { x, y };
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawGrid();
-                drawBFSArrows(x, y); // Use BFS to draw arrows
-            }
-        }
-
-        canvas.addEventListener('mousemove', (event) => {
-            const { x, y } = getMousePosition(event);
-            const cellX = Math.floor(x / gridSize);
-            const cellY = Math.floor(y / gridSize);
-            updateDrawing(cellX, cellY);
-        });
-
-        // Initial drawing
-        drawGrid();
-    </script>
+  <header>
+    <div class="brand">
+      <svg class="crest" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="4" y="4" width="24" height="24" rx="5" fill="#161b22" stroke="#d4a72c" stroke-width="2"/>
+        <circle cx="10" cy="10" r="2.5" fill="#d4a72c"/>
+        <circle cx="22" cy="10" r="2.5" fill="#d4a72c"/>
+        <circle cx="16" cy="16" r="2.5" fill="#d4a72c"/>
+        <circle cx="10" cy="22" r="2.5" fill="#d4a72c"/>
+        <circle cx="22" cy="22" r="2.5" fill="#d4a72c"/>
+      </svg>
+      <h1>Risk Math</h1>
+      <span class="subtitle">Battle Probability Console</span>
+    </div>
+    <nav id="tabs" role="tablist">
+      <button data-tab="grid" class="active">Battle Grid</button>
+      <button data-tab="calc">Calculator</button>
+      <button data-tab="campaign">Campaign</button>
+      <button data-tab="simulator">Simulator</button>
+      <button data-tab="odds">Dice Odds</button>
+    </nav>
+  </header>
+  <main>
+    <section id="grid" class="tab-panel active"></section>
+    <section id="calc" class="tab-panel"></section>
+    <section id="campaign" class="tab-panel"></section>
+    <section id="simulator" class="tab-panel"></section>
+    <section id="odds" class="tab-panel"></section>
+  </main>
+  <script type="module" src="js/app.js"></script>
 </body>
-
 </html>
