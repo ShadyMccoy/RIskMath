@@ -6,6 +6,7 @@ import * as calculator from './components/calculator.js';
 import * as campaign from './components/campaign.js';
 import * as simulator from './components/simulator.js';
 import * as odds from './components/odds.js';
+import * as reductions from './components/reductions.js';
 
 const MOUNTS = {
   grid: grid.mount,
@@ -14,6 +15,7 @@ const MOUNTS = {
   campaign: campaign.mount,
   simulator: simulator.mount,
   odds: odds.mount,
+  reductions: reductions.mount,
 };
 
 const mounted = new Set();

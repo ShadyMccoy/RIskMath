@@ -849,6 +849,80 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 .odds-reduce-seg.att { color: #ffd7d4; }
 .odds-reduce-seg.both { color: #d8dde6; }
 
+/* Reductions tab — presentation-mode roll matrix. */
+.red-panel { padding-bottom: 32px; }
+
+.red-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 16px 0 4px;
+}
+
+.red-pills button {
+  padding: 6px 14px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+  border: 1px solid var(--border-bright);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.red-pills button:hover { color: var(--gold-bright); border-color: var(--gold); }
+.red-pills button.active {
+  background: var(--gold);
+  border-color: var(--gold-bright);
+  color: var(--bg-1, #0d1117);
+}
+
+.red-subtitle {
+  margin: 6px 0 18px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+}
+
+.red-stage {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+  min-height: 200px;
+}
+
+.red-matrix-wrap {
+  position: relative;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.red-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.red-toggle {
+  padding: 10px 22px;
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.red-toggle:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: var(--bg-2, #161b22);
+}
+
 /* Help text */
 .hint {
   font-size: 12px;
