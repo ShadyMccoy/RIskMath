@@ -379,9 +379,9 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 /* Distribution chart */
 .dist-chart {
   display: flex;
-  align-items: end;
+  align-items: stretch;
   gap: 4px;
-  min-height: 200px;
+  height: 200px;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
@@ -390,6 +390,7 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   align-items: center;
   gap: 4px;
   min-width: 24px;
