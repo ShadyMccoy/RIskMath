@@ -72,12 +72,17 @@ export function mount(root) {
   const canvas = root.querySelector('#grid-canvas');
   const tooltip = root.querySelector('#grid-tooltip');
   const ctx = canvas.getContext('2d');
+  const bgCanvas = document.createElement('canvas');
+  const bgCtx = bgCanvas.getContext('2d');
 
   let state = {
     maxAtt: 8,
     maxDef: 8,
     hover: { x: -1, y: -1 },
     mode: 'flow',
+    bgDirty: true,
+    flow: null,         // { arrows, attWin, defWin } cached per hover
+    animId: null,
   };
 
   function field(label, id, val, min, max) {
@@ -89,6 +94,7 @@ export function mount(root) {
           const v = Math.max(min, Math.min(max, parseInt(e.target.value, 10) || min));
           state[id] = v;
           resize();
+          state.bgDirty = true;
           render();
         },
       }),
@@ -98,6 +104,7 @@ export function mount(root) {
   function bindExtraHandlers() {
     root.querySelector('#view-mode').addEventListener('change', (e) => {
       state.mode = e.target.value;
+      state.bgDirty = true;
       render();
     });
   }
@@ -109,6 +116,9 @@ export function mount(root) {
     state.histSize = Math.max(48, Math.round(cell * 1.4));
     canvas.width = state.histSize + (maxAtt + 1) * cell;
     canvas.height = (maxDef + 1) * cell + state.histSize;
+    bgCanvas.width = canvas.width;
+    bgCanvas.height = canvas.height;
+    state.bgDirty = true;
   }
 
   function gridLeft() { return state.histSize; }
@@ -123,8 +133,9 @@ export function mount(root) {
 
   function drawGridBg() {
     const { cell, maxAtt, maxDef } = state;
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const c = bgCtx;
+    c.fillStyle = COLORS.bg;
+    c.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
 
     if (state.mode === 'heatmap') {
       for (let a = 1; a <= maxAtt; a++) {
@@ -137,95 +148,126 @@ export function mount(root) {
             r[1] * mix + b[1] * (1 - mix),
             r[2] * mix + b[2] * (1 - mix),
           ].map((v) => Math.round(v));
-          ctx.fillStyle = `rgba(${rgb.join(',')}, 0.55)`;
+          c.fillStyle = `rgba(${rgb.join(',')}, 0.55)`;
           const { cx, cy } = cellCenter(a, d);
-          ctx.fillRect(cx - cell / 2, cy - cell / 2, cell, cell);
+          c.fillRect(cx - cell / 2, cy - cell / 2, cell, cell);
         }
       }
     }
 
     const gL = gridLeft(), gB = gridBottom();
-    ctx.strokeStyle = COLORS.grid;
-    ctx.lineWidth = 1;
+    c.strokeStyle = COLORS.grid;
+    c.lineWidth = 1;
     for (let i = 0; i <= maxAtt + 1; i++) {
       const x = gL + i * cell;
-      ctx.beginPath();
-      ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, gB);
-      ctx.stroke();
+      c.beginPath();
+      c.moveTo(x + 0.5, 0);
+      c.lineTo(x + 0.5, gB);
+      c.stroke();
     }
     for (let j = 0; j <= maxDef + 1; j++) {
       const y = gB - j * cell;
-      ctx.beginPath();
-      ctx.moveTo(gL, y + 0.5);
-      ctx.lineTo(canvas.width, y + 0.5);
-      ctx.stroke();
+      c.beginPath();
+      c.moveTo(gL, y + 0.5);
+      c.lineTo(bgCanvas.width, y + 0.5);
+      c.stroke();
     }
 
     // Axis labels
-    ctx.fillStyle = COLORS.axisLabel;
-    ctx.font = '600 11px var(--mono, monospace)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    c.fillStyle = COLORS.axisLabel;
+    c.font = '600 11px var(--mono, monospace)';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
     for (let a = 1; a <= maxAtt; a++) {
-      ctx.fillText(`${a}`, gL + a * cell + cell / 2, gB - 6);
+      c.fillText(`${a}`, gL + a * cell + cell / 2, gB - 6);
     }
     for (let d = 1; d <= maxDef; d++) {
-      ctx.fillText(`${d}`, gL + 8, gB - (d * cell + cell / 2));
+      c.fillText(`${d}`, gL + 8, gB - (d * cell + cell / 2));
     }
 
     // Heatmap text overlay
     if (state.mode === 'heatmap') {
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.font = `600 ${Math.max(10, Math.floor(cell * 0.22))}px var(--mono)`;
+      c.fillStyle = 'rgba(255,255,255,0.85)';
+      c.font = `600 ${Math.max(10, Math.floor(cell * 0.22))}px var(--mono)`;
       for (let a = 1; a <= maxAtt; a++) {
         for (let d = 1; d <= maxDef; d++) {
           const { attackerWin } = analyze(a, d);
           const { cx, cy } = cellCenter(a, d);
-          ctx.fillText(`${Math.round(attackerWin * 100)}`, cx, cy);
+          c.fillText(`${Math.round(attackerWin * 100)}`, cx, cy);
         }
       }
     }
   }
 
-  function drawArrow(fromX, fromY, toX, toY, thickness) {
+  function drawArrow(arrow) {
+    const { fromX, fromY, toX, toY, thickness, prob } = arrow;
     if (thickness < 0.4) return;
-    const headLen = Math.max(6, thickness * 1.4);
+    const { cell } = state;
+    const headLen = Math.max(7, Math.min(cell * 0.35, thickness * 1.6));
     const angle = Math.atan2(toY - fromY, toX - fromX);
+    // Probability-weighted opacity so weak flows recede and strong flows pop.
+    const alpha = 0.32 + Math.min(0.55, prob * 1.4);
     ctx.lineWidth = thickness;
-    ctx.strokeStyle = COLORS.arrowLine;
-    ctx.fillStyle = COLORS.arrowHead;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(241,194,50,0.55)';
+    ctx.shadowBlur = Math.min(14, thickness * 1.8);
+    ctx.strokeStyle = `rgba(241,194,50,${alpha})`;
+    ctx.fillStyle = `rgba(255,215,90,${Math.min(0.95, alpha + 0.12)})`;
+
+    // Stop the line a bit before the tip so the head sits cleanly on top.
+    const stopX = toX - headLen * 0.55 * Math.cos(angle);
+    const stopY = toY - headLen * 0.55 * Math.sin(angle);
     ctx.beginPath();
     ctx.moveTo(fromX, fromY);
-    ctx.lineTo(toX, toY);
+    ctx.lineTo(stopX, stopY);
     ctx.stroke();
+
     ctx.beginPath();
     ctx.moveTo(toX, toY);
     ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
     ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
     ctx.closePath();
     ctx.fill();
+    ctx.shadowBlur = 0;
   }
 
-  function drawFlow(startA, startD) {
+  function drawPulse(arrow, t) {
+    const { fromX, fromY, toX, toY, thickness, prob, seed } = arrow;
+    if (thickness < 0.4) return;
+    const period = 1600; // ms per traversal
+    const phase = (((t + seed) % period) + period) % period / period;
+    // ease so the dot accelerates slightly into the target
+    const eased = phase * phase * (3 - 2 * phase);
+    const px = fromX + (toX - fromX) * eased;
+    const py = fromY + (toY - fromY) * eased;
+    // Sin envelope so each pulse fades in, peaks mid-flight, fades out.
+    const env = Math.sin(phase * Math.PI);
+    const r = Math.max(1.6, Math.min(state.cell * 0.13, thickness * 0.55 + 1.2));
+    const a = (0.55 + Math.min(0.4, prob * 1.5)) * env;
+    ctx.shadowColor = 'rgba(255,228,140,0.95)';
+    ctx.shadowBlur = 16 * env;
+    ctx.fillStyle = `rgba(255,243,200,${a})`;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  function computeFlow(startA, startD) {
     if (startA < 1 || startD < 1) return null;
-    const { cell, maxAtt, maxDef } = state;
+    const { cell } = state;
+    const arrows = [];
     let attWin = 0, defWin = 0;
     const queue = [{ a: startA, d: startD, p: 1 }];
     const seen = new Map();
 
-    // BFS-ish: process cells in order of decreasing total armies.
     while (queue.length > 0) {
       queue.sort((u, v) => (v.a + v.d) - (u.a + u.d));
       const { a, d, p } = queue.shift();
       if (a < 1 || d < 1) continue;
 
       const { cx, cy } = cellCenter(a, d);
-      const aDice = Math.min(3, a);
-      const dDice = Math.min(2, d);
-
-      // Outcomes for this matchup.
       const matchups = {
         '3v2': [{ aLost: 0, dLost: 2, prob: 2890 / 7776 },
                 { aLost: 1, dLost: 1, prob: 2611 / 7776 },
@@ -235,7 +277,7 @@ export function mount(root) {
         '2v1': [{ aLost: 0, dLost: 1, prob: 125 / 216 }, { aLost: 1, dLost: 0, prob: 91 / 216 }],
         '1v2': [{ aLost: 0, dLost: 1, prob: 55 / 216 }, { aLost: 1, dLost: 0, prob: 161 / 216 }],
         '1v1': [{ aLost: 0, dLost: 1, prob: 15 / 36 }, { aLost: 1, dLost: 0, prob: 21 / 36 }],
-      }[`${aDice}v${dDice}`];
+      }[`${Math.min(3, a)}v${Math.min(2, d)}`];
 
       for (const { aLost, dLost, prob } of matchups) {
         const newA = a - aLost;
@@ -243,7 +285,11 @@ export function mount(root) {
         const flowProb = p * prob;
         const { cx: tx, cy: ty } = cellCenter(newA, newD);
         const thickness = Math.max(0.2, flowProb * cell * 1.4);
-        drawArrow(cx, cy, tx, ty, thickness);
+        arrows.push({
+          fromX: cx, fromY: cy, toX: tx, toY: ty,
+          thickness, prob: flowProb,
+          seed: Math.random() * 1600,
+        });
 
         if (newD === 0) attWin += flowProb;
         if (newA === 0) defWin += flowProb;
@@ -261,7 +307,9 @@ export function mount(root) {
       }
     }
 
-    return { attWin, defWin };
+    // Draw thinner arrows first so dominant flows sit on top.
+    arrows.sort((u, v) => u.thickness - v.thickness);
+    return { arrows, attWin, defWin };
   }
 
   function highlightCell(a, d) {
@@ -413,16 +461,39 @@ export function mount(root) {
     ctx.restore();
   }
 
-  function render() {
-    drawGridBg();
+  function drawFrame(t) {
+    if (state.bgDirty) {
+      drawGridBg();
+      state.bgDirty = false;
+    }
+    ctx.drawImage(bgCanvas, 0, 0);
     const { x: a, y: d } = state.hover;
-    let result = null;
-    if (a >= 1 && d >= 1 && a <= state.maxAtt && d <= state.maxDef) {
+    const valid = a >= 1 && d >= 1 && a <= state.maxAtt && d <= state.maxDef;
+    if (valid) {
       highlightCell(a, d);
-      result = drawFlow(a, d);
+      if (state.flow) {
+        for (const arrow of state.flow.arrows) drawArrow(arrow);
+        for (const arrow of state.flow.arrows) drawPulse(arrow, t);
+      }
       drawHistograms(a, d);
     }
-    updateStats(a, d, result);
+  }
+
+  function ensureAnimating() {
+    if (state.animId != null) return;
+    const loop = (t) => {
+      drawFrame(t);
+      state.animId = requestAnimationFrame(loop);
+    };
+    state.animId = requestAnimationFrame(loop);
+  }
+
+  function render() {
+    const { x: a, y: d } = state.hover;
+    const valid = a >= 1 && d >= 1 && a <= state.maxAtt && d <= state.maxDef;
+    state.flow = valid ? computeFlow(a, d) : null;
+    updateStats(a, d, state.flow);
+    ensureAnimating();
   }
 
   function updateStats(a, d, flow) {
