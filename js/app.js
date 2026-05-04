@@ -1,6 +1,7 @@
 // App shell: tab routing + lazy-mount components.
 
 import * as grid from './components/grid.js';
+import * as evolution from './components/evolution.js';
 import * as calculator from './components/calculator.js';
 import * as campaign from './components/campaign.js';
 import * as simulator from './components/simulator.js';
@@ -8,6 +9,7 @@ import * as odds from './components/odds.js';
 
 const MOUNTS = {
   grid: grid.mount,
+  evolution: evolution.mount,
   calc: calculator.mount,
   campaign: campaign.mount,
   simulator: simulator.mount,

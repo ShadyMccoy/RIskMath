@@ -86,6 +86,33 @@ export function analyze(A, D) {
   };
 }
 
+// One step of the absorbing-Markov-chain transition operator applied to a
+// full joint distribution dp[a][d]. Probability mass on absorbing states
+// (a === 0 or d === 0) is preserved; mass on interior states is pushed
+// forward by one dice exchange.
+export function stepDistribution(dp, A, D) {
+  const next = Array.from({ length: A + 1 }, () => new Float64Array(D + 1));
+  for (let a = 0; a <= A; a++) next[a][0] = dp[a][0];
+  for (let d = 0; d <= D; d++) next[0][d] = dp[0][d];
+  for (let a = 1; a <= A; a++) {
+    for (let d = 1; d <= D; d++) {
+      const p = dp[a][d];
+      if (p === 0) continue;
+      for (const [aLost, dLost, prob] of getOutcomes(a, d)) {
+        next[a - aLost][d - dLost] += p * prob;
+      }
+    }
+  }
+  return next;
+}
+
+// Initial point-mass distribution at (A, D).
+export function initialDistribution(A, D) {
+  const dp = Array.from({ length: A + 1 }, () => new Float64Array(D + 1));
+  if (A >= 0 && D >= 0) dp[A][D] = 1;
+  return dp;
+}
+
 // Single round simulation (one dice exchange). Returns [attLost, defLost].
 export function simulateRound(a, d, rng = Math.random) {
   const attDice = Array.from({ length: Math.min(3, a) }, () => Math.ceil(rng() * 6))

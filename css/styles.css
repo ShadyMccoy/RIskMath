@@ -331,6 +331,51 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
   vertical-align: middle;
 }
 
+/* Evolution tab */
+.evo-canvas-wrap {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+#evo-canvas {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  image-rendering: pixelated;
+}
+
+#evo-ts-canvas {
+  max-width: 100%;
+  height: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: block;
+}
+
+.evo-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.evo-slider-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--gold-bright);
+  min-width: 90px;
+}
+
+.evo-slider-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--gold);
+}
+
 /* Distribution chart */
 .dist-chart {
   display: flex;
