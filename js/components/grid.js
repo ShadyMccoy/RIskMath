@@ -21,16 +21,16 @@ const COLORS = {
 export function mount(root) {
   root.innerHTML = '';
 
-  const controls = el('div', { class: 'controls-row' }, [
-    field('Max attackers', 'maxAtt', 8, 1, 30),
-    field('Max defenders', 'maxDef', 8, 1, 30),
+  const controls = el('div', { class: 'controls-row grid-controls' }, [
+    field('Max attackers', 'maxAtt', 15, 1, 30),
+    field('Max defenders', 'maxDef', 15, 1, 30),
     el('div', { class: 'field', style: { flex: '0 0 auto' } }, [
       el('label', {}, 'View'),
       (() => {
         const sel = el('select', { id: 'view-mode', style: {
           background: '#1f2630', border: '1px solid #30363d', color: '#e6edf3',
           padding: '10px 12px', borderRadius: '6px', fontFamily: 'var(--mono)',
-          fontSize: '14px', outline: 'none',
+          fontSize: '14px', outline: 'none', width: '100%',
         }}, []);
         for (const [v, l] of [
           ['flow', 'Flow arrows'],
@@ -67,8 +67,7 @@ export function mount(root) {
       el('p', { class: 'desc' },
         'Hover any cell to see the probability flow when an attacker with X armies engages a defender with Y. ' +
         'Bars on the bottom and left edges show the probability of ending with each survivor count (the “0 army left” terminal squares).'),
-      controls,
-      wrap,
+      el('div', { class: 'grid-layout' }, [controls, wrap]),
       stats,
       legend,
     ])
@@ -81,8 +80,8 @@ export function mount(root) {
   const bgCtx = bgCanvas.getContext('2d');
 
   let state = {
-    maxAtt: 8,
-    maxDef: 8,
+    maxAtt: 15,
+    maxDef: 15,
     hover: { x: -1, y: -1 },
     mode: 'flow',
     bgDirty: true,
