@@ -32,7 +32,12 @@ export function mount(root) {
           padding: '10px 12px', borderRadius: '6px', fontFamily: 'var(--mono)',
           fontSize: '14px', outline: 'none',
         }}, []);
-        for (const [v, l] of [['flow', 'Flow arrows'], ['heatmap', 'Win-prob heatmap']]) {
+        for (const [v, l] of [
+          ['flow', 'Flow arrows'],
+          ['downstream', 'Downstream heatmap'],
+          ['flow+downstream', 'Arrows + heatmap'],
+          ['heatmap', 'Win-prob heatmap'],
+        ]) {
           sel.appendChild(el('option', { value: v }, l));
         }
         return sel;
@@ -50,7 +55,7 @@ export function mount(root) {
   const legend = el('div', { class: 'legend' }, [
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#f06560' }}), 'Attacker wins']),
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#5b9dff' }}), 'Defender wins']),
-    el('span', {}, [el('span', { class: 'swatch', style: { background: '#d4a72c' }}), 'Probability flow']),
+    el('span', {}, [el('span', { class: 'swatch', style: { background: '#d4a72c' }}), 'Probability flow / downstream visit']),
     el('span', {}, 'Side bars: P(survivors | win) — they sum to each side’s total win %'),
     el('span', { style: { marginLeft: 'auto', color: 'var(--text-muted)' }},
       'X = attacking force · Y = defenders · garrison not counted'),
@@ -261,11 +266,13 @@ export function mount(root) {
     let attWin = 0, defWin = 0;
     const queue = [{ a: startA, d: startD, p: 1 }];
     const seen = new Map();
+    const cellProb = new Map();
 
     while (queue.length > 0) {
       queue.sort((u, v) => (v.a + v.d) - (u.a + u.d));
       const { a, d, p } = queue.shift();
       if (a < 1 || d < 1) continue;
+      cellProb.set(`${a},${d}`, p);
 
       const { cx, cy } = cellCenter(a, d);
       const matchups = {
@@ -309,7 +316,48 @@ export function mount(root) {
 
     // Draw thinner arrows first so dominant flows sit on top.
     arrows.sort((u, v) => u.thickness - v.thickness);
-    return { arrows, attWin, defWin };
+    return { arrows, attWin, defWin, cellProb };
+  }
+
+  function drawDownstreamHeatmap(flow) {
+    if (!flow || !flow.cellProb) return;
+    const { cell, maxAtt, maxDef } = state;
+    let maxP = 0;
+    for (const [key, p] of flow.cellProb) {
+      if (p >= 1) continue; // start cell
+      if (p > maxP) maxP = p;
+    }
+    if (maxP <= 0) return;
+
+    for (const [key, p] of flow.cellProb) {
+      if (p >= 1) continue;
+      const [a, d] = key.split(',').map(Number);
+      if (a < 1 || d < 1 || a > maxAtt || d > maxDef) continue;
+      // sqrt so weak-but-nonzero flows still register visually
+      const intensity = Math.sqrt(p / maxP);
+      const alpha = Math.min(0.82, intensity * 0.82);
+      const { cx, cy } = cellCenter(a, d);
+      ctx.fillStyle = `rgba(241,194,50,${alpha})`;
+      ctx.fillRect(cx - cell / 2, cy - cell / 2, cell, cell);
+    }
+
+    // Inline percentage labels where there is room and meaningful weight.
+    if (cell >= 26) {
+      ctx.font = `600 ${Math.max(9, Math.floor(cell * 0.2))}px var(--mono, monospace)`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const [key, p] of flow.cellProb) {
+        if (p >= 1 || p < 0.005) continue;
+        const [a, d] = key.split(',').map(Number);
+        if (a < 1 || d < 1 || a > maxAtt || d > maxDef) continue;
+        const { cx, cy } = cellCenter(a, d);
+        const intensity = Math.sqrt(p / maxP);
+        // Dark text on bright cells, light text on dim cells, so labels stay readable.
+        ctx.fillStyle = intensity > 0.45 ? 'rgba(20,18,8,0.92)' : 'rgba(255,235,160,0.85)';
+        const label = p >= 0.1 ? `${Math.round(p * 100)}` : `${(p * 100).toFixed(1)}`;
+        ctx.fillText(label, cx, cy);
+      }
+    }
   }
 
   function highlightCell(a, d) {
@@ -471,7 +519,12 @@ export function mount(root) {
     const valid = a >= 1 && d >= 1 && a <= state.maxAtt && d <= state.maxDef;
     if (valid) {
       highlightCell(a, d);
-      if (state.flow) {
+      const showHeat = state.mode === 'downstream' || state.mode === 'flow+downstream';
+      const showFlow = state.mode === 'flow' || state.mode === 'flow+downstream';
+      if (state.flow && showHeat) {
+        drawDownstreamHeatmap(state.flow);
+      }
+      if (state.flow && showFlow) {
         for (const arrow of state.flow.arrows) drawArrow(arrow);
         for (const arrow of state.flow.arrows) drawPulse(arrow, t);
       }
