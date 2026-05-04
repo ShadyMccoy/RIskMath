@@ -117,15 +117,154 @@ function buildMatrix(a, d) {
   return matrix;
 }
 
+// Animate the matrix cells into a stacked bar where same-color cells are
+// packed contiguously. Each cell's target width preserves its joint
+// probability share, so the resulting slabs' widths read off as the three
+// outcome probabilities. Headers fade out, cell text fades to transparent
+// so it doesn't distort under scaling, and borders are dropped so adjacent
+// cells in a slab read as a single block.
+const REDUCE_ORDER = ['def', 'both', 'att'];
+const REDUCE_LABELS = { def: 'Defender loses all', both: 'Split', att: 'Attacker loses all' };
+
+function classifyCell(cell) {
+  if (cell.classList.contains('def')) return 'def';
+  if (cell.classList.contains('att')) return 'att';
+  return 'both';
+}
+
+function reduceMatrix(matrix, overlay) {
+  const cells = [...matrix.querySelectorAll('.mc-cell')];
+  const headers = [...matrix.querySelectorAll('.mc-corner, .mc-head, .mc-rh')];
+  const matrixRect = matrix.getBoundingClientRect();
+
+  const cellRects = new Map();
+  let bodyMinX = Infinity, bodyMinY = Infinity, bodyMaxX = -Infinity, bodyMaxY = -Infinity;
+  let totalArea = 0;
+  for (const cell of cells) {
+    const r = cell.getBoundingClientRect();
+    const x = r.left - matrixRect.left;
+    const y = r.top - matrixRect.top;
+    const w = r.width, h = r.height;
+    cellRects.set(cell, { x, y, w, h });
+    if (w === 0 || h === 0) continue;
+    bodyMinX = Math.min(bodyMinX, x);
+    bodyMinY = Math.min(bodyMinY, y);
+    bodyMaxX = Math.max(bodyMaxX, x + w);
+    bodyMaxY = Math.max(bodyMaxY, y + h);
+    totalArea += w * h;
+  }
+  const bodyW = bodyMaxX - bodyMinX;
+  const bodyH = bodyMaxY - bodyMinY;
+
+  const byColor = { def: [], both: [], att: [] };
+  for (const cell of cells) byColor[classifyCell(cell)].push(cell);
+
+  const colorAreas = {};
+  for (const cls of REDUCE_ORDER) {
+    colorAreas[cls] = byColor[cls].reduce((s, c) => {
+      const r = cellRects.get(c);
+      return s + r.w * r.h;
+    }, 0);
+  }
+
+  let segX = bodyMinX;
+  const segments = [];
+  for (const cls of REDUCE_ORDER) {
+    const segW = totalArea > 0 ? (colorAreas[cls] / totalArea) * bodyW : 0;
+    segments.push({ cls, x: segX, w: segW, p: totalArea > 0 ? colorAreas[cls] / totalArea : 0 });
+
+    byColor[cls].sort((a, b) => {
+      const ar = cellRects.get(a), br = cellRects.get(b);
+      return br.w * br.h - ar.w * ar.h;
+    });
+
+    let cellX = segX;
+    for (const cell of byColor[cls]) {
+      const src = cellRects.get(cell);
+      const cellArea = src.w * src.h;
+      const tgtW = colorAreas[cls] > 0 ? (cellArea / colorAreas[cls]) * segW : 0;
+      const tgtH = bodyH;
+      const tx = cellX - src.x;
+      const ty = bodyMinY - src.y;
+      const sx = src.w > 0 ? tgtW / src.w : 0;
+      const sy = src.h > 0 ? tgtH / src.h : 0;
+      cell.style.transformOrigin = '0 0';
+      cell.style.transition =
+        'transform 750ms cubic-bezier(0.4, 0, 0.2, 1), ' +
+        'border-color 350ms ease, color 250ms ease';
+      cell.style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
+      cell.style.borderColor = 'transparent';
+      cell.style.color = 'transparent';
+      cellX += tgtW;
+    }
+    segX += segW;
+  }
+
+  for (const h of headers) {
+    h.style.transition = 'opacity 300ms ease';
+    h.style.opacity = '0';
+  }
+
+  // Place outcome labels overlaying their slabs after the slide settles.
+  overlay.innerHTML = '';
+  overlay.style.left = bodyMinX + 'px';
+  overlay.style.top = bodyMinY + 'px';
+  overlay.style.width = bodyW + 'px';
+  overlay.style.height = bodyH + 'px';
+  for (const seg of segments) {
+    if (seg.w < 8) continue;
+    const label = el('div', {
+      class: `odds-reduce-seg ${seg.cls}`,
+      style: { left: (seg.x - bodyMinX) + 'px', width: seg.w + 'px' },
+    }, [
+      el('div', { class: 'odds-reduce-pct' }, pct(seg.p)),
+      el('div', { class: 'odds-reduce-name' }, REDUCE_LABELS[seg.cls]),
+    ]);
+    overlay.appendChild(label);
+  }
+  // Defer the fade-in until cells have started moving.
+  requestAnimationFrame(() => { overlay.classList.add('shown'); });
+}
+
+function restoreMatrix(matrix, overlay) {
+  overlay.classList.remove('shown');
+  for (const cell of matrix.querySelectorAll('.mc-cell')) {
+    cell.style.transform = '';
+    cell.style.borderColor = '';
+    cell.style.color = '';
+  }
+  for (const h of matrix.querySelectorAll('.mc-corner, .mc-head, .mc-rh')) {
+    h.style.opacity = '';
+  }
+}
+
 function buildMatrixDetails(a, d) {
+  const matrix = buildMatrix(a, d);
+  const overlay = el('div', { class: 'odds-reduce-overlay' });
+  const scroll = el('div', { class: 'odds-matrix-scroll' }, [matrix, overlay]);
+  const button = el('button', { class: 'odds-reduce-btn', type: 'button' }, 'Collapse to outcomes →');
+  let reduced = false;
+  button.addEventListener('click', () => {
+    if (!reduced) {
+      reduceMatrix(matrix, overlay);
+      button.textContent = '← Restore matrix';
+      reduced = true;
+    } else {
+      restoreMatrix(matrix, overlay);
+      button.textContent = 'Collapse to outcomes →';
+      reduced = false;
+    }
+  });
   return el('details', { class: 'odds-matrix-wrap' }, [
     el('summary', {}, 'Show roll matrix'),
     el('p', { class: 'odds-matrix-cap' },
       'Sorted attacker dice (rows) × sorted defender dice (cols), strongest matchup top-left. ' +
       'Row heights and column widths scale with their roll counts, so each cell\'s ' +
       'area equals its joint probability — the green/red/gray regions literally are ' +
-      'P(defender loses all), P(attacker loses all), P(split).'),
-    el('div', { class: 'odds-matrix-scroll' }, [buildMatrix(a, d)]),
+      'P(defender loses all), P(attacker loses all), P(split). ' +
+      'Collapse the matrix to see those regions pack into a single bar.'),
+    button,
+    scroll,
   ]);
 }
 
