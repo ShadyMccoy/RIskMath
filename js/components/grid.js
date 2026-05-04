@@ -51,7 +51,7 @@ export function mount(root) {
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#f06560' }}), 'Attacker wins']),
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#5b9dff' }}), 'Defender wins']),
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#d4a72c' }}), 'Probability flow']),
-    el('span', {}, 'Side bars: P(survivors | win) — they sum to each side’s total win %'),
+    el('span', {}, 'Edge bars: P(end with N survivors) — bar size = win probability at each survivor count'),
     el('span', { style: { marginLeft: 'auto', color: 'var(--text-muted)' }},
       'X = attacking force · Y = defenders · garrison not counted'),
   ]);
@@ -61,7 +61,7 @@ export function mount(root) {
       el('h2', {}, 'Battle Grid'),
       el('p', { class: 'desc' },
         'Hover any cell to see the probability flow when an attacker with X armies engages a defender with Y. ' +
-        'Arrow thickness = probability mass moving along that path.'),
+        'Bars on the bottom and left edges show the probability of ending with each survivor count (the “0 army left” terminal squares).'),
       controls,
       wrap,
       stats,
@@ -200,18 +200,21 @@ export function mount(root) {
   }
 
   function drawArrow(arrow) {
-    const { fromX, fromY, toX, toY, thickness, prob } = arrow;
-    if (thickness < 0.4) return;
+    const { fromX, fromY, toX, toY, prob } = arrow;
+    if (prob < 0.0005) return;
     const { cell } = state;
-    const headLen = Math.max(7, Math.min(cell * 0.35, thickness * 1.6));
+    // Uniform arrow geometry — probability is encoded by the terminal bars,
+    // not by line weight.
+    const lineWidth = Math.max(1, Math.min(2, cell * 0.045));
+    const headLen = Math.max(6, cell * 0.22);
     const angle = Math.atan2(toY - fromY, toX - fromX);
-    // Probability-weighted opacity so weak flows recede and strong flows pop.
-    const alpha = 0.32 + Math.min(0.55, prob * 1.4);
-    ctx.lineWidth = thickness;
+    // Weak flows still fade so the eye can follow dominant paths.
+    const alpha = 0.35 + Math.min(0.5, prob * 1.2);
+    ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(241,194,50,0.55)';
-    ctx.shadowBlur = Math.min(14, thickness * 1.8);
+    ctx.shadowColor = 'rgba(241,194,50,0.45)';
+    ctx.shadowBlur = 6;
     ctx.strokeStyle = `rgba(241,194,50,${alpha})`;
     ctx.fillStyle = `rgba(255,215,90,${Math.min(0.95, alpha + 0.12)})`;
 
@@ -233,8 +236,8 @@ export function mount(root) {
   }
 
   function drawPulse(arrow, t) {
-    const { fromX, fromY, toX, toY, thickness, prob, seed } = arrow;
-    if (thickness < 0.4) return;
+    const { fromX, fromY, toX, toY, prob, seed } = arrow;
+    if (prob < 0.0005) return;
     const period = 1600; // ms per traversal
     const phase = (((t + seed) % period) + period) % period / period;
     // ease so the dot accelerates slightly into the target
@@ -243,7 +246,7 @@ export function mount(root) {
     const py = fromY + (toY - fromY) * eased;
     // Sin envelope so each pulse fades in, peaks mid-flight, fades out.
     const env = Math.sin(phase * Math.PI);
-    const r = Math.max(1.6, Math.min(state.cell * 0.13, thickness * 0.55 + 1.2));
+    const r = Math.max(1.6, Math.min(state.cell * 0.13, prob * state.cell * 0.7 + 1.4));
     const a = (0.55 + Math.min(0.4, prob * 1.5)) * env;
     ctx.shadowColor = 'rgba(255,228,140,0.95)';
     ctx.shadowBlur = 16 * env;
@@ -284,10 +287,9 @@ export function mount(root) {
         const newD = d - dLost;
         const flowProb = p * prob;
         const { cx: tx, cy: ty } = cellCenter(newA, newD);
-        const thickness = Math.max(0.2, flowProb * cell * 1.4);
         arrows.push({
           fromX: cx, fromY: cy, toX: tx, toY: ty,
-          thickness, prob: flowProb,
+          prob: flowProb,
           seed: Math.random() * 1600,
         });
 
@@ -307,8 +309,8 @@ export function mount(root) {
       }
     }
 
-    // Draw thinner arrows first so dominant flows sit on top.
-    arrows.sort((u, v) => u.thickness - v.thickness);
+    // Draw lower-probability arrows first so dominant flows sit on top.
+    arrows.sort((u, v) => u.prob - v.prob);
     return { arrows, attWin, defWin };
   }
 
@@ -343,68 +345,80 @@ export function mount(root) {
     }
     if (maxP <= 0) return;
 
-    const padding = 6;
+    const padding = 4;
     const barArea = histSize - padding * 2;
 
-    // Bottom histogram: attacker survivors when attacker wins.
+    // ----- Bottom bar chart: P(attacker survives with `aa` armies) -----
+    // Each bar sits in the column directly below its (aa, 0) terminal cell;
+    // height encodes absolute probability of ending in that state.
     const att = COLORS.attHeat;
-    ctx.fillStyle = `rgba(${att.join(',')}, 0.7)`;
-    ctx.strokeStyle = `rgba(${att.join(',')}, 1)`;
-    ctx.lineWidth = 1;
+    const attBars = [];
     for (let aa = 1; aa <= maxAtt; aa++) {
       const p = attRemainingDist[aa] || 0;
-      if (p <= 0) continue;
       const h = (p / maxP) * barArea;
-      const x = gL + aa * cell + 2;
-      const w = cell - 4;
-      const y = gB + padding;
-      ctx.fillRect(x, y, w, h);
-      // Highlight the bar for the hovered attacker count line.
-      if (aa === a) {
-        ctx.strokeStyle = `rgba(${att.join(',')}, 1)`;
-        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      }
+      const x = gL + aa * cell;
+      attBars.push({ x, w: cell, h, p, aa });
     }
 
-    // Left histogram: defender survivors when defender wins.
+    // Filled bars (full cell width, no gaps — reads as a true bar chart).
+    for (const b of attBars) {
+      if (b.h <= 0) continue;
+      ctx.fillStyle = `rgba(${att.join(',')}, ${b.aa === a ? 0.92 : 0.72})`;
+      ctx.fillRect(b.x, gB + padding, b.w, b.h);
+    }
+    // Area outline connecting bar tops to read as a continuous distribution.
+    ctx.strokeStyle = `rgba(${att.join(',')}, 1)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(gL + cell, gB + padding);
+    for (const b of attBars) {
+      ctx.lineTo(b.x, gB + padding + b.h);
+      ctx.lineTo(b.x + b.w, gB + padding + b.h);
+    }
+    ctx.lineTo(gL + (maxAtt + 1) * cell, gB + padding);
+    ctx.stroke();
+
+    // ----- Left bar chart: P(defender survives with `dd` armies) -----
     const def = COLORS.defHeat;
-    ctx.fillStyle = `rgba(${def.join(',')}, 0.7)`;
-    ctx.strokeStyle = `rgba(${def.join(',')}, 1)`;
+    const defBars = [];
     for (let dd = 1; dd <= maxDef; dd++) {
       const p = defRemainingDist[dd] || 0;
-      if (p <= 0) continue;
       const w = (p / maxP) * barArea;
-      const y = gB - (dd + 1) * cell + 2;
-      const h = cell - 4;
-      const x = gL - padding - w;
-      ctx.fillRect(x, y, w, h);
-      if (dd === d) {
-        ctx.strokeStyle = `rgba(${def.join(',')}, 1)`;
-        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-      }
+      const y = gB - (dd + 1) * cell;
+      defBars.push({ y, h: cell, w, p, dd });
     }
 
-    // Inline percentage labels on each visible bar (when there's room).
-    ctx.font = `600 ${Math.max(9, Math.floor(cell * 0.18))}px var(--mono, monospace)`;
+    for (const b of defBars) {
+      if (b.w <= 0) continue;
+      ctx.fillStyle = `rgba(${def.join(',')}, ${b.dd === d ? 0.92 : 0.72})`;
+      ctx.fillRect(gL - padding - b.w, b.y, b.w, b.h);
+    }
+    ctx.strokeStyle = `rgba(${def.join(',')}, 1)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(gL - padding, gB - cell);
+    for (const b of defBars) {
+      ctx.lineTo(gL - padding - b.w, b.y + b.h);
+      ctx.lineTo(gL - padding - b.w, b.y);
+    }
+    ctx.lineTo(gL - padding, gB - (maxDef + 1) * cell);
+    ctx.stroke();
+
+    // Inline percentage labels on each visible bar.
+    ctx.font = `600 ${Math.max(9, Math.floor(cell * 0.2))}px var(--mono, monospace)`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = `rgba(${att.join(',')}, 1)`;
-    for (let aa = 1; aa <= maxAtt; aa++) {
-      const p = attRemainingDist[aa] || 0;
-      if (p < 0.01) continue;
-      const h = (p / maxP) * barArea;
-      const cx = gL + aa * cell + cell / 2;
-      ctx.fillText(`${Math.round(p * 100)}`, cx, gB + padding + h - 2);
+    for (const b of attBars) {
+      if (b.p < 0.01) continue;
+      ctx.fillText(`${Math.round(b.p * 100)}`, b.x + b.w / 2, gB + padding + b.h - 2);
     }
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = `rgba(${def.join(',')}, 1)`;
-    for (let dd = 1; dd <= maxDef; dd++) {
-      const p = defRemainingDist[dd] || 0;
-      if (p < 0.01) continue;
-      const w = (p / maxP) * barArea;
-      const cy = gB - dd * cell - cell / 2;
-      ctx.fillText(`${Math.round(p * 100)}`, gL - padding - 2, cy);
+    for (const b of defBars) {
+      if (b.p < 0.01) continue;
+      ctx.fillText(`${Math.round(b.p * 100)}`, gL - padding - 2, b.y + b.h / 2);
     }
 
     // Expected-survivors markers (visualize "strength of victory" beyond win/loss).
