@@ -13,7 +13,9 @@ const LABELS = {
 };
 
 // Enumerate the sorted-descending top-K of all 6^N dice rolls, with the
-// number of underlying ordered rolls that produce each top-K tuple.
+// number of underlying ordered rolls that produce each top-K tuple. Sorted
+// by tuple sum descending (strongest first), tiebreak by top die descending,
+// so the top-left of the matrix is the strongest-vs-strongest matchup.
 function topsOfN(N, K) {
   const map = new Map();
   const dice = new Array(N).fill(1);
@@ -27,8 +29,13 @@ function topsOfN(N, K) {
     dice[i]++;
   }
   return [...map.entries()]
-    .map(([key, count]) => ({ tops: key.split(',').map(Number), count }))
+    .map(([key, count]) => {
+      const tops = key.split(',').map(Number);
+      const sum = tops.reduce((s, x) => s + x, 0);
+      return { tops, count, sum };
+    })
     .sort((a, b) => {
+      if (a.sum !== b.sum) return b.sum - a.sum;
       for (let i = 0; i < a.tops.length; i++) {
         if (a.tops[i] !== b.tops[i]) return b.tops[i] - a.tops[i];
       }
@@ -44,22 +51,39 @@ function attLossesFor(attTops, defTops) {
   return lost;
 }
 
+// Marimekko-style sizing: each row's height and column's width are
+// proportional to its underlying-roll count, so each cell's *area* is its
+// joint probability. Tiny tracks are clamped so the layout stays legible;
+// numerals are dropped from tracks too small to display them cleanly.
+const MC_PX_PER_COUNT = 0.95;
+const MC_MIN_TRACK = 7;
+const MC_LEGIBLE_TRACK = 11;
+
+function trackPx(count) {
+  return Math.max(MC_MIN_TRACK, Math.round(count * MC_PX_PER_COUNT));
+}
+
 function buildMatrix(a, d) {
   const K = Math.min(a, d);
   const rows = topsOfN(a, K);
   const cols = topsOfN(d, K);
+  const rowPx = rows.map(r => trackPx(r.count));
+  const colPx = cols.map(c => trackPx(c.count));
 
   const matrix = el('div', { class: 'odds-matrix' });
   matrix.style.gridTemplateColumns =
-    `repeat(${K}, var(--mc-size)) auto repeat(${cols.length}, var(--mc-size))`;
+    `repeat(${K}, var(--mc-size)) auto ${colPx.map(p => p + 'px').join(' ')}`;
+  matrix.style.gridTemplateRows =
+    `repeat(${K + 1}, var(--mc-size)) ${rowPx.map(p => p + 'px').join(' ')}`;
 
   // Top header rows: defender D1..DK values, with the "Dj" label sitting in
   // the row-count column so it lines up over the body's count column.
   for (let j = 0; j < K; j++) {
     for (let k = 0; k < K; k++) matrix.appendChild(el('div', { class: 'mc-corner' }));
     matrix.appendChild(el('div', { class: 'mc-corner mc-label' }, `D${j + 1}`));
-    for (const c of cols) {
-      matrix.appendChild(el('div', { class: 'mc-head' }, String(c.tops[j])));
+    for (let ci = 0; ci < cols.length; ci++) {
+      const text = colPx[ci] >= MC_LEGIBLE_TRACK ? String(cols[ci].tops[j]) : '';
+      matrix.appendChild(el('div', { class: 'mc-head' }, text));
     }
   }
   // Header row: A1..AK and "count" labels, then per-column counts.
@@ -67,20 +91,27 @@ function buildMatrix(a, d) {
     matrix.appendChild(el('div', { class: 'mc-corner mc-label' }, `A${k + 1}`));
   }
   matrix.appendChild(el('div', { class: 'mc-corner mc-label' }, 'count'));
-  for (const c of cols) {
-    matrix.appendChild(el('div', { class: 'mc-head mc-count' }, String(c.count)));
+  for (let ci = 0; ci < cols.length; ci++) {
+    const text = colPx[ci] >= MC_LEGIBLE_TRACK ? String(cols[ci].count) : '';
+    matrix.appendChild(el('div', { class: 'mc-head mc-count' }, text));
   }
 
   // Body rows.
-  for (const r of rows) {
+  for (let ri = 0; ri < rows.length; ri++) {
+    const r = rows[ri];
+    const rh = rowPx[ri];
     for (let k = 0; k < K; k++) {
-      matrix.appendChild(el('div', { class: 'mc-rh' }, String(r.tops[k])));
+      const text = rh >= MC_LEGIBLE_TRACK ? String(r.tops[k]) : '';
+      matrix.appendChild(el('div', { class: 'mc-rh' }, text));
     }
-    matrix.appendChild(el('div', { class: 'mc-rh mc-count' }, String(r.count)));
-    for (const c of cols) {
+    const countText = rh >= MC_LEGIBLE_TRACK ? String(r.count) : '';
+    matrix.appendChild(el('div', { class: 'mc-rh mc-count' }, countText));
+    for (let ci = 0; ci < cols.length; ci++) {
+      const c = cols[ci];
       const lost = attLossesFor(r.tops, c.tops);
       const cls = lost === 0 ? 'def' : lost === K ? 'att' : 'both';
-      matrix.appendChild(el('div', { class: `mc-cell ${cls}` }, String(lost)));
+      const showDigit = rh >= MC_LEGIBLE_TRACK && colPx[ci] >= MC_LEGIBLE_TRACK;
+      matrix.appendChild(el('div', { class: `mc-cell ${cls}` }, showDigit ? String(lost) : ''));
     }
   }
   return matrix;
@@ -90,9 +121,10 @@ function buildMatrixDetails(a, d) {
   return el('details', { class: 'odds-matrix-wrap' }, [
     el('summary', {}, 'Show roll matrix'),
     el('p', { class: 'odds-matrix-cap' },
-      'Sorted attacker dice (rows) × sorted defender dice (cols). ' +
-      'Each cell shows attacker losses; row & column counts are the number of ' +
-      'underlying ordered rolls. Green = defender loses all, red = attacker loses all, gray = split.'),
+      'Sorted attacker dice (rows) × sorted defender dice (cols), strongest matchup top-left. ' +
+      'Row heights and column widths scale with their roll counts, so each cell\'s ' +
+      'area equals its joint probability — the green/red/gray regions literally are ' +
+      'P(defender loses all), P(attacker loses all), P(split).'),
     el('div', { class: 'odds-matrix-scroll' }, [buildMatrix(a, d)]),
   ]);
 }
