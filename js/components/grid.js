@@ -602,7 +602,7 @@ export function mount(root) {
     const valid = a >= 1 && d >= 1 && a <= state.maxAtt && d <= state.maxDef;
     const exact = valid ? analyze(a, d) : null;
     stats.append(
-      stat('Cell', valid ? `${a} vs ${d}` : '—', 'gold'),
+      stat('Attackers and Defenders', valid ? `${a} vs ${d}` : '—', 'gold'),
       stat('Attacker win', valid ? pct(exact.attackerWin) : '—', 'attacker'),
       stat('Defender win', valid ? pct(exact.defenderWin) : '—', 'defender'),
       stat('Avg attacker survivors',
