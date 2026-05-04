@@ -21,16 +21,16 @@ const COLORS = {
 export function mount(root) {
   root.innerHTML = '';
 
-  const controls = el('div', { class: 'controls-row' }, [
-    field('Max attackers', 'maxAtt', 8, 1, 30),
-    field('Max defenders', 'maxDef', 8, 1, 30),
+  const controls = el('div', { class: 'controls-row grid-controls' }, [
+    field('Max attackers', 'maxAtt', 15, 1, 30),
+    field('Max defenders', 'maxDef', 15, 1, 30),
     el('div', { class: 'field', style: { flex: '0 0 auto' } }, [
       el('label', {}, 'View'),
       (() => {
         const sel = el('select', { id: 'view-mode', style: {
           background: '#1f2630', border: '1px solid #30363d', color: '#e6edf3',
           padding: '10px 12px', borderRadius: '6px', fontFamily: 'var(--mono)',
-          fontSize: '14px', outline: 'none',
+          fontSize: '14px', outline: 'none', width: '100%',
         }}, []);
         for (const [v, l] of [
           ['flow', 'Flow arrows'],
@@ -67,8 +67,7 @@ export function mount(root) {
       el('p', { class: 'desc' },
         'Hover any cell to see the probability flow when an attacker with X armies engages a defender with Y. ' +
         'Bars on the bottom and left edges show the probability of ending with each survivor count (the “0 army left” terminal squares).'),
-      controls,
-      wrap,
+      el('div', { class: 'grid-layout' }, [controls, wrap]),
       stats,
       legend,
     ])
@@ -81,8 +80,8 @@ export function mount(root) {
   const bgCtx = bgCanvas.getContext('2d');
 
   let state = {
-    maxAtt: 8,
-    maxDef: 8,
+    maxAtt: 15,
+    maxDef: 15,
     hover: { x: -1, y: -1 },
     mode: 'flow',
     bgDirty: true,
@@ -205,51 +204,63 @@ export function mount(root) {
     }
   }
 
-  function drawArrow(arrow) {
+  function arrowGeom(arrow) {
     const { fromX, fromY, toX, toY, prob } = arrow;
-    if (prob < 0.0005) return;
     const { cell } = state;
-    // Uniform arrow geometry — probability is encoded by the terminal bars,
-    // not by line weight.
-    const lineWidth = Math.max(1, Math.min(2, cell * 0.045));
-    const headLen = Math.max(6, cell * 0.22);
     const angle = Math.atan2(toY - fromY, toX - fromX);
-    // Weak flows still fade so the eye can follow dominant paths.
-    const alpha = 0.35 + Math.min(0.5, prob * 1.2);
+    // Pull each tip back to the entry side of the destination cell so the
+    // 2-3 arrows converging on a cell don't pile their heads at one point.
+    const tipBack = cell * 0.4;
+    const tipX = toX - tipBack * Math.cos(angle);
+    const tipY = toY - tipBack * Math.sin(angle);
+    // Probability-encoded thickness; sqrt keeps weak flows visible while
+    // letting dominant flows clearly dominate.
+    const t = Math.sqrt(Math.min(1, prob));
+    const lineWidth = Math.max(0.7, Math.min(cell * 0.18, 0.7 + t * cell * 0.16));
+    const headLen = Math.max(cell * 0.14, Math.min(cell * 0.32, lineWidth * 3.0));
+    return { angle, tipX, tipY, lineWidth, headLen };
+  }
+
+  function drawArrow(arrow) {
+    const { fromX, fromY, prob } = arrow;
+    if (prob < 0.0005) return;
+    const { angle, tipX, tipY, lineWidth, headLen } = arrowGeom(arrow);
+    const alpha = 0.4 + Math.min(0.5, Math.sqrt(prob) * 0.7);
     ctx.lineWidth = lineWidth;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(241,194,50,0.45)';
-    ctx.shadowBlur = 6;
+    ctx.shadowColor = 'rgba(241,194,50,0.35)';
+    ctx.shadowBlur = 4;
     ctx.strokeStyle = `rgba(241,194,50,${alpha})`;
-    ctx.fillStyle = `rgba(255,215,90,${Math.min(0.95, alpha + 0.12)})`;
+    ctx.fillStyle = `rgba(255,215,90,${Math.min(0.95, alpha + 0.15)})`;
 
     // Stop the line a bit before the tip so the head sits cleanly on top.
-    const stopX = toX - headLen * 0.55 * Math.cos(angle);
-    const stopY = toY - headLen * 0.55 * Math.sin(angle);
+    const stopX = tipX - headLen * 0.55 * Math.cos(angle);
+    const stopY = tipY - headLen * 0.55 * Math.sin(angle);
     ctx.beginPath();
     ctx.moveTo(fromX, fromY);
     ctx.lineTo(stopX, stopY);
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.moveTo(toX, toY);
-    ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX - headLen * Math.cos(angle - Math.PI / 6), tipY - headLen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(tipX - headLen * Math.cos(angle + Math.PI / 6), tipY - headLen * Math.sin(angle + Math.PI / 6));
     ctx.closePath();
     ctx.fill();
     ctx.shadowBlur = 0;
   }
 
   function drawPulse(arrow, t) {
-    const { fromX, fromY, toX, toY, prob, seed } = arrow;
+    const { fromX, fromY, prob, seed } = arrow;
     if (prob < 0.0005) return;
+    const { tipX, tipY } = arrowGeom(arrow);
     const period = 2800; // ms per traversal
     const phase = (((t + seed) % period) + period) % period / period;
     // ease so the dot accelerates slightly into the target
     const eased = phase * phase * (3 - 2 * phase);
-    const px = fromX + (toX - fromX) * eased;
-    const py = fromY + (toY - fromY) * eased;
+    const px = fromX + (tipX - fromX) * eased;
+    const py = fromY + (tipY - fromY) * eased;
     // Sin envelope so each pulse fades in, peaks mid-flight, fades out.
     const env = Math.sin(phase * Math.PI);
     const r = Math.max(1.1, Math.min(state.cell * 0.09, prob * state.cell * 0.45 + 1.0));
