@@ -640,8 +640,44 @@ export function mount(root) {
       <div style="color:var(--gold-bright);font-weight:600;margin-bottom:2px">${a} vs ${d}</div>
       <div style="color:var(--att)">ATT: ${pct(attackerWin)}</div>
       <div style="color:var(--def)">DEF: ${pct(defenderWin)}</div>`;
-    tooltip.style.left = `${x + 18}px`;
-    tooltip.style.top = `${y + 8}px`;
+
+    // Position relative to wrap (the tooltip's positioned ancestor), accounting
+    // for the canvas's offset within it. Place to the right/below the cursor,
+    // flipping to the opposite side near the wrap edges, and clamp so the
+    // tooltip never overlaps the canvas's left defender histogram or bottom
+    // attacker histogram regions.
+    const wrap = tooltip.offsetParent || tooltip.parentElement;
+    const wrapRect = wrap.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+    const canvasOffsetX = canvasRect.left - wrapRect.left;
+    const canvasOffsetY = canvasRect.top - wrapRect.top;
+    const cssScaleX = canvasRect.width / canvas.width;
+    const cssScaleY = canvasRect.height / canvas.height;
+    const histLeftCss = canvasOffsetX + gridLeft() * cssScaleX;
+    const histBottomCss = canvasOffsetY + gridBottom() * cssScaleY;
+
+    const tw = tooltip.offsetWidth;
+    const th = tooltip.offsetHeight;
+
+    const cursorX = canvasOffsetX + x;
+    const cursorY = canvasOffsetY + y;
+    const gap = 14;
+    const margin = 4;
+
+    let left = cursorX + gap;
+    if (left + tw + margin > wrapRect.width) {
+      left = cursorX - gap - tw;
+    }
+    left = Math.max(histLeftCss + margin, Math.min(left, wrapRect.width - tw - margin));
+
+    let top = cursorY + gap;
+    if (top + th + margin > histBottomCss) {
+      top = cursorY - gap - th;
+    }
+    top = Math.max(margin, Math.min(top, histBottomCss - th - margin));
+
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
     tooltip.style.opacity = '1';
   }
 
