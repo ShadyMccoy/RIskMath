@@ -51,6 +51,7 @@ export function mount(root) {
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#f06560' }}), 'Attacker wins']),
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#5b9dff' }}), 'Defender wins']),
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#d4a72c' }}), 'Probability flow']),
+    el('span', {}, 'Side bars: P(survivors | win) — they sum to each side’s total win %'),
     el('span', { style: { marginLeft: 'auto', color: 'var(--text-muted)' }},
       'X = attacking force · Y = defenders · garrison not counted'),
   ]);
@@ -111,18 +112,22 @@ export function mount(root) {
   function resize() {
     const { maxAtt, maxDef } = state;
     const cell = Math.min(72, Math.floor(720 / Math.max(maxAtt + 1, maxDef + 1)));
-    canvas.width = (maxAtt + 1) * cell;
-    canvas.height = (maxDef + 1) * cell;
+    state.cell = cell;
+    state.histSize = Math.max(48, Math.round(cell * 1.4));
+    canvas.width = state.histSize + (maxAtt + 1) * cell;
+    canvas.height = (maxDef + 1) * cell + state.histSize;
     bgCanvas.width = canvas.width;
     bgCanvas.height = canvas.height;
-    state.cell = cell;
     state.bgDirty = true;
   }
 
+  function gridLeft() { return state.histSize; }
+  function gridBottom() { return canvas.height - state.histSize; }
+
   function cellCenter(ax, dy) {
     // ax = attackers (column), dy = defenders (row, drawn from bottom up).
-    const cx = ax * state.cell + state.cell / 2;
-    const cy = canvas.height - (dy * state.cell + state.cell / 2);
+    const cx = gridLeft() + ax * state.cell + state.cell / 2;
+    const cy = gridBottom() - (dy * state.cell + state.cell / 2);
     return { cx, cy };
   }
 
@@ -150,17 +155,20 @@ export function mount(root) {
       }
     }
 
+    const gL = gridLeft(), gB = gridBottom();
     c.strokeStyle = COLORS.grid;
     c.lineWidth = 1;
-    for (let x = 0; x <= bgCanvas.width; x += cell) {
+    for (let i = 0; i <= maxAtt + 1; i++) {
+      const x = gL + i * cell;
       c.beginPath();
       c.moveTo(x + 0.5, 0);
-      c.lineTo(x + 0.5, bgCanvas.height);
+      c.lineTo(x + 0.5, gB);
       c.stroke();
     }
-    for (let y = 0; y <= bgCanvas.height; y += cell) {
+    for (let j = 0; j <= maxDef + 1; j++) {
+      const y = gB - j * cell;
       c.beginPath();
-      c.moveTo(0, y + 0.5);
+      c.moveTo(gL, y + 0.5);
       c.lineTo(bgCanvas.width, y + 0.5);
       c.stroke();
     }
@@ -171,10 +179,10 @@ export function mount(root) {
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     for (let a = 1; a <= maxAtt; a++) {
-      c.fillText(`${a}`, a * cell + cell / 2, bgCanvas.height - 6);
+      c.fillText(`${a}`, gL + a * cell + cell / 2, gB - 6);
     }
     for (let d = 1; d <= maxDef; d++) {
-      c.fillText(`${d}`, 8, bgCanvas.height - (d * cell + cell / 2));
+      c.fillText(`${d}`, gL + 8, gB - (d * cell + cell / 2));
     }
 
     // Heatmap text overlay
@@ -315,6 +323,144 @@ export function mount(root) {
     ctx.strokeRect(cx - cell / 2 + 1, cy - cell / 2 + 1, cell - 2, cell - 2);
   }
 
+  function drawHistograms(a, d) {
+    if (a < 1 || d < 1 || a > state.maxAtt || d > state.maxDef) return;
+    const {
+      attRemainingDist, defRemainingDist,
+      attackerWin, defenderWin,
+      expectedAttRemaining, expectedDefRemaining,
+    } = analyze(a, d);
+    const { cell, maxAtt, maxDef, histSize } = state;
+    const gL = gridLeft(), gB = gridBottom();
+
+    // Common scale so attacker/defender bars are visually comparable.
+    let maxP = 0;
+    for (let aa = 1; aa <= maxAtt; aa++) {
+      maxP = Math.max(maxP, attRemainingDist[aa] || 0);
+    }
+    for (let dd = 1; dd <= maxDef; dd++) {
+      maxP = Math.max(maxP, defRemainingDist[dd] || 0);
+    }
+    if (maxP <= 0) return;
+
+    const padding = 6;
+    const barArea = histSize - padding * 2;
+
+    // Bottom histogram: attacker survivors when attacker wins.
+    const att = COLORS.attHeat;
+    ctx.fillStyle = `rgba(${att.join(',')}, 0.7)`;
+    ctx.strokeStyle = `rgba(${att.join(',')}, 1)`;
+    ctx.lineWidth = 1;
+    for (let aa = 1; aa <= maxAtt; aa++) {
+      const p = attRemainingDist[aa] || 0;
+      if (p <= 0) continue;
+      const h = (p / maxP) * barArea;
+      const x = gL + aa * cell + 2;
+      const w = cell - 4;
+      const y = gB + padding;
+      ctx.fillRect(x, y, w, h);
+      // Highlight the bar for the hovered attacker count line.
+      if (aa === a) {
+        ctx.strokeStyle = `rgba(${att.join(',')}, 1)`;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      }
+    }
+
+    // Left histogram: defender survivors when defender wins.
+    const def = COLORS.defHeat;
+    ctx.fillStyle = `rgba(${def.join(',')}, 0.7)`;
+    ctx.strokeStyle = `rgba(${def.join(',')}, 1)`;
+    for (let dd = 1; dd <= maxDef; dd++) {
+      const p = defRemainingDist[dd] || 0;
+      if (p <= 0) continue;
+      const w = (p / maxP) * barArea;
+      const y = gB - (dd + 1) * cell + 2;
+      const h = cell - 4;
+      const x = gL - padding - w;
+      ctx.fillRect(x, y, w, h);
+      if (dd === d) {
+        ctx.strokeStyle = `rgba(${def.join(',')}, 1)`;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      }
+    }
+
+    // Inline percentage labels on each visible bar (when there's room).
+    ctx.font = `600 ${Math.max(9, Math.floor(cell * 0.18))}px var(--mono, monospace)`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = `rgba(${att.join(',')}, 1)`;
+    for (let aa = 1; aa <= maxAtt; aa++) {
+      const p = attRemainingDist[aa] || 0;
+      if (p < 0.01) continue;
+      const h = (p / maxP) * barArea;
+      const cx = gL + aa * cell + cell / 2;
+      ctx.fillText(`${Math.round(p * 100)}`, cx, gB + padding + h - 2);
+    }
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `rgba(${def.join(',')}, 1)`;
+    for (let dd = 1; dd <= maxDef; dd++) {
+      const p = defRemainingDist[dd] || 0;
+      if (p < 0.01) continue;
+      const w = (p / maxP) * barArea;
+      const cy = gB - dd * cell - cell / 2;
+      ctx.fillText(`${Math.round(p * 100)}`, gL - padding - 2, cy);
+    }
+
+    // Expected-survivors markers (visualize "strength of victory" beyond win/loss).
+    if (attackerWin > 0 && expectedAttRemaining >= 1) {
+      const mx = gL + cell + (expectedAttRemaining - 0.5) * cell;
+      ctx.strokeStyle = `rgba(${att.join(',')}, 0.95)`;
+      ctx.fillStyle = `rgba(${att.join(',')}, 0.95)`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(mx, gB + padding);
+      ctx.lineTo(mx, gB + padding + barArea);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(mx - 4, gB + padding + barArea);
+      ctx.lineTo(mx + 4, gB + padding + barArea);
+      ctx.lineTo(mx, gB + padding + barArea - 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (defenderWin > 0 && expectedDefRemaining >= 1) {
+      const my = gB - cell - (expectedDefRemaining - 0.5) * cell;
+      ctx.strokeStyle = `rgba(${def.join(',')}, 0.95)`;
+      ctx.fillStyle = `rgba(${def.join(',')}, 0.95)`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(gL - padding - barArea, my);
+      ctx.lineTo(gL - padding, my);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(gL - padding - barArea, my - 4);
+      ctx.lineTo(gL - padding - barArea, my + 4);
+      ctx.lineTo(gL - padding - barArea + 5, my);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Side-bar axis titles.
+    ctx.fillStyle = 'rgba(230,237,243,0.55)';
+    ctx.font = '500 10px var(--mono, monospace)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('P(attacker survivors | att wins) %', gL + cell + maxAtt * cell / 2, gB + histSize - 12);
+
+    ctx.save();
+    ctx.translate(10, gB - cell - maxDef * cell / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('P(defender survivors | def wins) %', 0, 0);
+    ctx.restore();
+  }
+
   function drawFrame(t) {
     if (state.bgDirty) {
       drawGridBg();
@@ -329,6 +475,7 @@ export function mount(root) {
         for (const arrow of state.flow.arrows) drawArrow(arrow);
         for (const arrow of state.flow.arrows) drawPulse(arrow, t);
       }
+      drawHistograms(a, d);
     }
   }
 
@@ -377,8 +524,8 @@ export function mount(root) {
     const scaleY = canvas.height / rect.height;
     const px = (ev.clientX - rect.left) * scaleX;
     const py = (ev.clientY - rect.top) * scaleY;
-    const a = Math.floor(px / state.cell);
-    const d = state.maxDef + 1 - Math.ceil(py / state.cell);
+    const a = Math.floor((px - gridLeft()) / state.cell);
+    const d = Math.floor((gridBottom() - py) / state.cell);
     return { a, d, px: ev.clientX - rect.left, py: ev.clientY - rect.top };
   }
 
