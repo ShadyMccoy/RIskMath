@@ -147,15 +147,17 @@ export function reduceMatrix(matrix, overlay) {
   const bodyW = bodyMaxX - bodyMinX;
   const bodyH = bodyMaxY - bodyMinY;
 
-  // For lopsided matrices (e.g. 3v1: 6 thin columns), the natural body width
-  // makes the reduced bar uncomfortably narrow. Widen the bar while keeping
-  // total area constant so each cell's area is still preserved.
+  // For narrow matrices (e.g. 3v1's 6 thin defender columns, or 1v1's small
+  // 6x6 grid) the natural body is too thin for a readable stacked bar. Widen
+  // to a comfortable minimum, area-preserving, and clamp to a minimum height
+  // so very small matchups don't pancake into a thin strip.
   const MIN_BAR_W = 220;
+  const MIN_BAR_H = 280;
   let barW = bodyW;
   let barH = bodyH;
   if (totalArea > 0 && bodyW < MIN_BAR_W) {
     barW = MIN_BAR_W;
-    barH = totalArea / barW;
+    barH = Math.max(MIN_BAR_H, totalArea / barW);
   }
 
   const byColor = { def: [], both: [], att: [] };
