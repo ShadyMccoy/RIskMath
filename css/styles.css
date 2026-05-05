@@ -912,8 +912,7 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 
 .red-matrix-wrap {
   position: relative;
-  overflow-x: auto;
-  max-width: 100%;
+  overflow: visible;
 }
 
 .red-controls {

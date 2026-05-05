@@ -147,6 +147,19 @@ export function reduceMatrix(matrix, overlay) {
   const bodyW = bodyMaxX - bodyMinX;
   const bodyH = bodyMaxY - bodyMinY;
 
+  // For narrow matrices (e.g. 3v1's 6 thin defender columns, or 1v1's small
+  // 6x6 grid) the natural body is too thin for a readable stacked bar. Widen
+  // to a comfortable minimum, area-preserving, and clamp to a minimum height
+  // so very small matchups don't pancake into a thin strip.
+  const MIN_BAR_W = 220;
+  const MIN_BAR_H = 280;
+  let barW = bodyW;
+  let barH = bodyH;
+  if (totalArea > 0 && bodyW < MIN_BAR_W) {
+    barW = MIN_BAR_W;
+    barH = Math.max(MIN_BAR_H, totalArea / barW);
+  }
+
   const byColor = { def: [], both: [], att: [] };
   for (const cell of cells) byColor[classifyCell(cell)].push(cell);
 
@@ -166,7 +179,7 @@ export function reduceMatrix(matrix, overlay) {
   let segY = bodyMinY;
   const segments = [];
   for (const cls of REDUCE_ORDER) {
-    const segH = totalArea > 0 ? (colorAreas[cls] / totalArea) * bodyH : 0;
+    const segH = totalArea > 0 ? (colorAreas[cls] / totalArea) * barH : 0;
     segments.push({ cls, y: segY, h: segH, p: totalArea > 0 ? colorAreas[cls] / totalArea : 0 });
 
     byColor[cls].sort((a, b) => {
@@ -183,7 +196,7 @@ export function reduceMatrix(matrix, overlay) {
     for (const cell of byColor[cls]) {
       const src = cellRects.get(cell);
       const cellArea = src.w * src.h;
-      const tgtW = bodyW;
+      const tgtW = barW;
       const tgtH = colorAreas[cls] > 0 ? (cellArea / colorAreas[cls]) * segH : 0;
       const tx = bodyMinX - src.x;
       const ty = cellY - src.y;
@@ -216,8 +229,8 @@ export function reduceMatrix(matrix, overlay) {
   overlay.innerHTML = '';
   overlay.style.left = bodyMinX + 'px';
   overlay.style.top = bodyMinY + 'px';
-  overlay.style.width = bodyW + 'px';
-  overlay.style.height = bodyH + 'px';
+  overlay.style.width = barW + 'px';
+  overlay.style.height = barH + 'px';
   for (const seg of segments) {
     if (seg.h < 8) continue;
     const label = el('div', {
