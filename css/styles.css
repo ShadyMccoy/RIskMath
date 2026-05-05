@@ -50,11 +50,18 @@ header {
   z-index: 100;
 }
 
+.header-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 0 24px;
+}
+
 .brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
-  padding: 14px 24px 4px;
+  flex: 0 0 auto;
 }
 
 .brand h1 {
@@ -63,13 +70,6 @@ header {
   margin: 0;
   letter-spacing: 0.5px;
   color: var(--gold-bright);
-  text-transform: uppercase;
-}
-
-.brand .subtitle {
-  font-size: 12px;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 
@@ -82,7 +82,8 @@ header {
 nav#tabs {
   display: flex;
   gap: 2px;
-  padding: 0 16px;
+  flex: 1 1 auto;
+  align-items: stretch;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -95,7 +96,7 @@ nav#tabs button {
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-dim);
-  padding: 12px 16px;
+  padding: 16px 16px;
   cursor: pointer;
   font-family: inherit;
   font-size: 13px;
@@ -285,14 +286,21 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
   margin-bottom: 16px;
 }
 
-.grid-layout > .grid-controls {
-  flex: 0 0 200px;
+.grid-layout > .grid-sidebar {
+  flex: 0 0 240px;
+  display: flex;
   flex-direction: column;
-  align-items: stretch;
-  margin-bottom: 0;
+  gap: 18px;
+  min-width: 0;
 }
 
-.grid-layout > .grid-controls .field {
+.grid-layout > .grid-sidebar > .controls-row {
+  margin-bottom: 0;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.grid-layout > .grid-sidebar > .controls-row .field {
   flex: 0 0 auto;
   width: 100%;
   min-width: 0;
@@ -303,14 +311,51 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
   min-width: 0;
 }
 
+.grid-side-hists {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.side-hist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.side-hist-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-family: var(--mono);
+}
+
+.side-hist-label.att { color: var(--att); }
+.side-hist-label.def { color: var(--def); }
+
+.side-hist canvas {
+  width: 100%;
+  height: auto;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  display: block;
+}
+
 @media (max-width: 900px) {
   .grid-layout { flex-direction: column; }
-  .grid-layout > .grid-controls {
+  .grid-layout > .grid-sidebar {
     flex: 0 0 auto;
-    flex-direction: row;
     width: 100%;
   }
-  .grid-layout > .grid-controls .field { flex: 1 1 100px; }
+  .grid-layout > .grid-sidebar > .controls-row {
+    flex-direction: row;
+  }
+  .grid-layout > .grid-sidebar > .controls-row .field { flex: 1 1 100px; }
+  .grid-side-hists { flex-direction: row; flex-wrap: wrap; }
+  .side-hist { flex: 1 1 240px; min-width: 0; }
 }
 
 #grid-canvas-wrap {
@@ -942,7 +987,9 @@ button.danger:hover { background: rgba(240, 101, 96, 0.1); }
 @media (max-width: 700px) {
   main { padding: 12px; }
   .panel { padding: 14px; }
-  .brand { padding: 12px 16px 0; }
+  .header-bar { flex-direction: column; gap: 0; padding: 0; align-items: stretch; }
+  .brand { padding: 12px 16px 4px; }
+  nav#tabs { padding: 0 8px; }
   nav#tabs button { padding: 10px 12px; font-size: 12px; }
   .stat .value { font-size: 18px; }
   .die { width: 40px; height: 40px; font-size: 20px; }

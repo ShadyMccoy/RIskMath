@@ -50,13 +50,27 @@ export function mount(root) {
     el('div', { id: 'grid-tooltip' }),
   ]);
 
+  const attHistCanvas = el('canvas', { id: 'grid-att-hist', width: 360, height: 140 });
+  const defHistCanvas = el('canvas', { id: 'grid-def-hist', width: 360, height: 140 });
+  const sideHists = el('div', { class: 'grid-side-hists' }, [
+    el('div', { class: 'side-hist' }, [
+      el('div', { class: 'side-hist-label att' }, 'P(attacker survivors | att wins)'),
+      attHistCanvas,
+    ]),
+    el('div', { class: 'side-hist' }, [
+      el('div', { class: 'side-hist-label def' }, 'P(defender survivors | def wins)'),
+      defHistCanvas,
+    ]),
+  ]);
+  const sidebar = el('div', { class: 'grid-sidebar' }, [controls, sideHists]);
+
   const stats = el('div', { class: 'stat-grid', id: 'grid-stats' });
 
   const legend = el('div', { class: 'legend' }, [
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#f06560' }}), 'Attacker wins']),
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#5b9dff' }}), 'Defender wins']),
     el('span', {}, [el('span', { class: 'swatch', style: { background: '#d4a72c' }}), 'Probability flow / downstream visit']),
-    el('span', {}, 'Edge bars: P(end with N survivors) — bar size = win probability at each survivor count'),
+    el('span', {}, 'Side histograms: P(end with N survivors) given the hovered matchup'),
     el('span', { style: { marginLeft: 'auto', color: 'var(--text-muted)' }},
       'X = attacking force · Y = defenders · garrison not counted'),
   ]);
@@ -66,8 +80,8 @@ export function mount(root) {
       el('h2', {}, 'Battle Grid'),
       el('p', { class: 'desc' },
         'Hover any cell to see the probability flow when an attacker with X armies engages a defender with Y. ' +
-        'Bars on the bottom and left edges show the probability of ending with each survivor count (the “0 army left” terminal squares).'),
-      el('div', { class: 'grid-layout' }, [controls, wrap]),
+        'The side histograms show the probability of ending with each survivor count (the “0 army left” terminal squares).'),
+      el('div', { class: 'grid-layout' }, [sidebar, wrap]),
       stats,
       legend,
     ])
@@ -117,17 +131,15 @@ export function mount(root) {
     const { maxAtt, maxDef } = state;
     const cell = Math.min(72, Math.floor(720 / Math.max(maxAtt + 1, maxDef + 1)));
     state.cell = cell;
-    state.histSize = Math.max(80, Math.round(cell * 2.2));
-    state.labelMargin = 18; // dedicated space for 0%/max% tick labels
-    canvas.width = state.histSize + (maxAtt + 1) * cell + state.labelMargin;
-    canvas.height = (maxDef + 1) * cell + state.histSize + state.labelMargin;
+    canvas.width = (maxAtt + 1) * cell;
+    canvas.height = (maxDef + 1) * cell;
     bgCanvas.width = canvas.width;
     bgCanvas.height = canvas.height;
     state.bgDirty = true;
   }
 
-  function gridLeft() { return state.histSize; }
-  function gridBottom() { return canvas.height - state.histSize - state.labelMargin; }
+  function gridLeft() { return 0; }
+  function gridBottom() { return canvas.height; }
 
   function cellCenter(ax, dy) {
     // ax = attackers (column), dy = defenders (row, drawn from bottom up).
@@ -385,187 +397,135 @@ export function mount(root) {
     ctx.strokeRect(cx - cell / 2 + 1, cy - cell / 2 + 1, cell - 2, cell - 2);
   }
 
+  function drawSurvivorHist(target, dist, max, startCount, expected, color) {
+    const c = target.getContext('2d');
+    const W = target.width, H = target.height;
+    c.clearRect(0, 0, W, H);
+
+    const padL = 32, padR = 10, padT = 10, padB = 22;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    let maxP = 0;
+    for (let i = 1; i <= max; i++) maxP = Math.max(maxP, dist[i] || 0);
+
+    // Axis frame
+    c.strokeStyle = 'rgba(230,237,243,0.35)';
+    c.lineWidth = 1;
+    c.setLineDash([]);
+    c.beginPath();
+    c.moveTo(padL + 0.5, padT);
+    c.lineTo(padL + 0.5, padT + plotH + 0.5);
+    c.lineTo(padL + plotW, padT + plotH + 0.5);
+    c.stroke();
+
+    c.font = '500 10px var(--mono, monospace)';
+    c.fillStyle = 'rgba(230,237,243,0.7)';
+    c.textAlign = 'right';
+    c.textBaseline = 'top';
+    c.fillText(maxP > 0 ? `${Math.round(maxP * 100)}%` : '0%', padL - 4, padT);
+    c.textBaseline = 'bottom';
+    c.fillText('0%', padL - 4, padT + plotH);
+
+    if (maxP <= 0) {
+      c.fillStyle = 'rgba(230,237,243,0.45)';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.font = '500 11px var(--mono, monospace)';
+      c.fillText('—', padL + plotW / 2, padT + plotH / 2);
+      return;
+    }
+
+    const barW = plotW / max;
+    const bars = [];
+    for (let i = 1; i <= max; i++) {
+      const p = dist[i] || 0;
+      const h = (p / maxP) * plotH;
+      const x = padL + (i - 1) * barW;
+      bars.push({ x, w: barW, h, p, i });
+    }
+
+    for (const b of bars) {
+      if (b.h <= 0) continue;
+      c.fillStyle = `rgba(${color.join(',')}, ${b.i === startCount ? 0.92 : 0.72})`;
+      c.fillRect(b.x, padT + plotH - b.h, b.w, b.h);
+    }
+
+    // Outline trace across bar tops
+    c.strokeStyle = `rgba(${color.join(',')}, 1)`;
+    c.lineWidth = 1.25;
+    c.beginPath();
+    c.moveTo(padL, padT + plotH);
+    for (const b of bars) {
+      c.lineTo(b.x, padT + plotH - b.h);
+      c.lineTo(b.x + b.w, padT + plotH - b.h);
+    }
+    c.lineTo(padL + plotW, padT + plotH);
+    c.stroke();
+
+    // X-axis tick labels
+    const tickStep = max <= 10 ? 1 : (max <= 20 ? 2 : 5);
+    c.fillStyle = 'rgba(230,237,243,0.55)';
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
+    for (let i = 1; i <= max; i++) {
+      if (i !== 1 && i !== max && i % tickStep !== 0) continue;
+      c.fillText(`${i}`, padL + (i - 0.5) * barW, padT + plotH + 4);
+    }
+
+    // Bar percentage labels (only where there's room and meaningful weight)
+    if (barW >= 14) {
+      c.font = '600 9px var(--mono, monospace)';
+      c.fillStyle = `rgba(${color.join(',')}, 1)`;
+      c.textAlign = 'center';
+      c.textBaseline = 'bottom';
+      for (const b of bars) {
+        if (b.p < 0.01) continue;
+        c.fillText(`${Math.round(b.p * 100)}`, b.x + b.w / 2, padT + plotH - b.h - 1);
+      }
+    }
+
+    // Expected-survivors marker
+    if (expected != null && expected >= 1) {
+      const mx = padL + (expected - 0.5) * barW;
+      c.strokeStyle = `rgba(${color.join(',')}, 0.95)`;
+      c.fillStyle = `rgba(${color.join(',')}, 0.95)`;
+      c.lineWidth = 1.5;
+      c.setLineDash([3, 3]);
+      c.beginPath();
+      c.moveTo(mx, padT);
+      c.lineTo(mx, padT + plotH);
+      c.stroke();
+      c.setLineDash([]);
+      c.beginPath();
+      c.moveTo(mx - 4, padT);
+      c.lineTo(mx + 4, padT);
+      c.lineTo(mx, padT + 5);
+      c.closePath();
+      c.fill();
+    }
+  }
+
   function drawHistograms(a, d) {
-    if (a < 1 || d < 1 || a > state.maxAtt || d > state.maxDef) return;
+    const valid = a >= 1 && d >= 1 && a <= state.maxAtt && d <= state.maxDef;
+    if (!valid) {
+      drawSurvivorHist(attHistCanvas, {}, state.maxAtt, -1, null, COLORS.attHeat);
+      drawSurvivorHist(defHistCanvas, {}, state.maxDef, -1, null, COLORS.defHeat);
+      return;
+    }
     const {
       attRemainingDist, defRemainingDist,
       attackerWin, defenderWin,
       expectedAttRemaining, expectedDefRemaining,
     } = analyze(a, d);
-    const { cell, maxAtt, maxDef, histSize } = state;
-    const gL = gridLeft(), gB = gridBottom();
-
-    // Common scale so attacker/defender bars are visually comparable.
-    let maxP = 0;
-    for (let aa = 1; aa <= maxAtt; aa++) {
-      maxP = Math.max(maxP, attRemainingDist[aa] || 0);
-    }
-    for (let dd = 1; dd <= maxDef; dd++) {
-      maxP = Math.max(maxP, defRemainingDist[dd] || 0);
-    }
-    if (maxP <= 0) return;
-
-    const padding = 4;
-    const barArea = histSize - padding * 2;
-    const maxPct = Math.round(maxP * 100);
-
-    // ----- Axis baselines + 0% / max% gridlines -----
-    ctx.strokeStyle = 'rgba(230,237,243,0.35)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([]);
-    // Bottom: 0% line (touching grid) and max% line at the deepest point.
-    ctx.beginPath();
-    ctx.moveTo(gL + cell, gB + padding + 0.5);
-    ctx.lineTo(gL + (maxAtt + 1) * cell, gB + padding + 0.5);
-    ctx.moveTo(gL + cell, gB + padding + barArea + 0.5);
-    ctx.lineTo(gL + (maxAtt + 1) * cell, gB + padding + barArea + 0.5);
-    // Left: 0% line (touching grid) and max% line at the leftmost extent.
-    ctx.moveTo(gL - padding + 0.5, gB - cell);
-    ctx.lineTo(gL - padding + 0.5, gB - (maxDef + 1) * cell);
-    ctx.moveTo(gL - padding - barArea + 0.5, gB - cell);
-    ctx.lineTo(gL - padding - barArea + 0.5, gB - (maxDef + 1) * cell);
-    ctx.stroke();
-
-    ctx.font = '500 10px var(--mono, monospace)';
-    ctx.fillStyle = 'rgba(230,237,243,0.7)';
-    // Tick labels live in the dedicated label margins so they never overlap
-    // the grid cells.
-    // Bottom-axis ticks (0% near grid, max% deepest): right margin.
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('0%', gL + (maxAtt + 1) * cell + 4, gB + padding);
-    ctx.fillText(`${maxPct}%`, gL + (maxAtt + 1) * cell + 4, gB + padding + barArea);
-    // Left-axis ticks (0% near grid, max% leftmost): bottom margin.
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('0%', gL - padding, gB + histSize + 2);
-    ctx.fillText(`${maxPct}%`, gL - padding - barArea, gB + histSize + 2);
-
-    // ----- Bottom bar chart: P(attacker survives with `aa` armies) -----
-    // Each bar sits in the column directly below its (aa, 0) terminal cell;
-    // height encodes absolute probability of ending in that state.
-    const att = COLORS.attHeat;
-    const attBars = [];
-    for (let aa = 1; aa <= maxAtt; aa++) {
-      const p = attRemainingDist[aa] || 0;
-      const h = (p / maxP) * barArea;
-      const x = gL + aa * cell;
-      attBars.push({ x, w: cell, h, p, aa });
-    }
-
-    // Filled bars (full cell width, no gaps — reads as a true bar chart).
-    for (const b of attBars) {
-      if (b.h <= 0) continue;
-      ctx.fillStyle = `rgba(${att.join(',')}, ${b.aa === a ? 0.92 : 0.72})`;
-      ctx.fillRect(b.x, gB + padding, b.w, b.h);
-    }
-    // Area outline connecting bar tops to read as a continuous distribution.
-    ctx.strokeStyle = `rgba(${att.join(',')}, 1)`;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(gL + cell, gB + padding);
-    for (const b of attBars) {
-      ctx.lineTo(b.x, gB + padding + b.h);
-      ctx.lineTo(b.x + b.w, gB + padding + b.h);
-    }
-    ctx.lineTo(gL + (maxAtt + 1) * cell, gB + padding);
-    ctx.stroke();
-
-    // ----- Left bar chart: P(defender survives with `dd` armies) -----
-    const def = COLORS.defHeat;
-    const defBars = [];
-    for (let dd = 1; dd <= maxDef; dd++) {
-      const p = defRemainingDist[dd] || 0;
-      const w = (p / maxP) * barArea;
-      const y = gB - (dd + 1) * cell;
-      defBars.push({ y, h: cell, w, p, dd });
-    }
-
-    for (const b of defBars) {
-      if (b.w <= 0) continue;
-      ctx.fillStyle = `rgba(${def.join(',')}, ${b.dd === d ? 0.92 : 0.72})`;
-      ctx.fillRect(gL - padding - b.w, b.y, b.w, b.h);
-    }
-    ctx.strokeStyle = `rgba(${def.join(',')}, 1)`;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(gL - padding, gB - cell);
-    for (const b of defBars) {
-      ctx.lineTo(gL - padding - b.w, b.y + b.h);
-      ctx.lineTo(gL - padding - b.w, b.y);
-    }
-    ctx.lineTo(gL - padding, gB - (maxDef + 1) * cell);
-    ctx.stroke();
-
-    // Inline percentage labels on each visible bar.
-    ctx.font = `600 ${Math.max(9, Math.floor(cell * 0.2))}px var(--mono, monospace)`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillStyle = `rgba(${att.join(',')}, 1)`;
-    for (const b of attBars) {
-      if (b.p < 0.01) continue;
-      ctx.fillText(`${Math.round(b.p * 100)}`, b.x + b.w / 2, gB + padding + b.h - 2);
-    }
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = `rgba(${def.join(',')}, 1)`;
-    for (const b of defBars) {
-      if (b.p < 0.01) continue;
-      ctx.fillText(`${Math.round(b.p * 100)}`, gL - padding - 2, b.y + b.h / 2);
-    }
-
-    // Expected-survivors markers (visualize "strength of victory" beyond win/loss).
-    if (attackerWin > 0 && expectedAttRemaining >= 1) {
-      const mx = gL + cell + (expectedAttRemaining - 0.5) * cell;
-      ctx.strokeStyle = `rgba(${att.join(',')}, 0.95)`;
-      ctx.fillStyle = `rgba(${att.join(',')}, 0.95)`;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(mx, gB + padding);
-      ctx.lineTo(mx, gB + padding + barArea);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(mx - 4, gB + padding + barArea);
-      ctx.lineTo(mx + 4, gB + padding + barArea);
-      ctx.lineTo(mx, gB + padding + barArea - 5);
-      ctx.closePath();
-      ctx.fill();
-    }
-    if (defenderWin > 0 && expectedDefRemaining >= 1) {
-      const my = gB - cell - (expectedDefRemaining - 0.5) * cell;
-      ctx.strokeStyle = `rgba(${def.join(',')}, 0.95)`;
-      ctx.fillStyle = `rgba(${def.join(',')}, 0.95)`;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 3]);
-      ctx.beginPath();
-      ctx.moveTo(gL - padding - barArea, my);
-      ctx.lineTo(gL - padding, my);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(gL - padding - barArea, my - 4);
-      ctx.lineTo(gL - padding - barArea, my + 4);
-      ctx.lineTo(gL - padding - barArea + 5, my);
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Side-bar axis titles.
-    ctx.fillStyle = 'rgba(230,237,243,0.55)';
-    ctx.font = '500 10px var(--mono, monospace)';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('P(attacker survivors | att wins) %', gL + cell + maxAtt * cell / 2, gB + histSize - 12);
-
-    ctx.save();
-    ctx.translate(10, gB - cell - maxDef * cell / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('P(defender survivors | def wins) %', 0, 0);
-    ctx.restore();
+    drawSurvivorHist(
+      attHistCanvas, attRemainingDist, state.maxAtt, a,
+      attackerWin > 0 ? expectedAttRemaining : null, COLORS.attHeat,
+    );
+    drawSurvivorHist(
+      defHistCanvas, defRemainingDist, state.maxDef, d,
+      defenderWin > 0 ? expectedDefRemaining : null, COLORS.defHeat,
+    );
   }
 
   function drawFrame(t) {
@@ -587,7 +547,6 @@ export function mount(root) {
         for (const arrow of state.flow.arrows) drawArrow(arrow);
         for (const arrow of state.flow.arrows) drawPulse(arrow, t);
       }
-      drawHistograms(a, d);
     }
   }
 
@@ -605,6 +564,7 @@ export function mount(root) {
     const valid = a >= 1 && d >= 1 && a <= state.maxAtt && d <= state.maxDef;
     state.flow = valid ? computeFlow(a, d) : null;
     updateStats(a, d, state.flow);
+    drawHistograms(a, d);
     ensureAnimating();
   }
 
@@ -654,18 +614,12 @@ export function mount(root) {
 
     // Position relative to wrap (the tooltip's positioned ancestor), accounting
     // for the canvas's offset within it. Place to the right/below the cursor,
-    // flipping to the opposite side near the wrap edges, and clamp so the
-    // tooltip never overlaps the canvas's left defender histogram or bottom
-    // attacker histogram regions.
+    // flipping to the opposite side near the wrap edges.
     const wrap = tooltip.offsetParent || tooltip.parentElement;
     const wrapRect = wrap.getBoundingClientRect();
     const canvasRect = canvas.getBoundingClientRect();
     const canvasOffsetX = canvasRect.left - wrapRect.left;
     const canvasOffsetY = canvasRect.top - wrapRect.top;
-    const cssScaleX = canvasRect.width / canvas.width;
-    const cssScaleY = canvasRect.height / canvas.height;
-    const histLeftCss = canvasOffsetX + gridLeft() * cssScaleX;
-    const histBottomCss = canvasOffsetY + gridBottom() * cssScaleY;
 
     const tw = tooltip.offsetWidth;
     const th = tooltip.offsetHeight;
@@ -679,13 +633,13 @@ export function mount(root) {
     if (left + tw + margin > wrapRect.width) {
       left = cursorX - gap - tw;
     }
-    left = Math.max(histLeftCss + margin, Math.min(left, wrapRect.width - tw - margin));
+    left = Math.max(margin, Math.min(left, wrapRect.width - tw - margin));
 
     let top = cursorY + gap;
-    if (top + th + margin > histBottomCss) {
+    if (top + th + margin > wrapRect.height) {
       top = cursorY - gap - th;
     }
-    top = Math.max(margin, Math.min(top, histBottomCss - th - margin));
+    top = Math.max(margin, Math.min(top, wrapRect.height - th - margin));
 
     tooltip.style.left = `${left}px`;
     tooltip.style.top = `${top}px`;
