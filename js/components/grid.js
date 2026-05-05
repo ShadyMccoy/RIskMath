@@ -23,7 +23,7 @@ export function mount(root) {
 
   const controls = el('div', { class: 'controls-row grid-controls' }, [
     field('Max attackers', 'maxAtt', 15, 1, 30),
-    field('Max defenders', 'maxDef', 15, 1, 30),
+    field('Max defenders', 'maxDef', 10, 1, 30),
     el('div', { class: 'field', style: { flex: '0 0 auto' } }, [
       el('label', {}, 'View'),
       (() => {
