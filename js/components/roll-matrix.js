@@ -9,6 +9,7 @@ const DEFAULT_OPTS = {
   pxPerCount: 0.95,
   minTrack: 7,
   legibleTrack: 11,
+  digitTrack: 8,
   mcSize: 18,
   fontSize: 10,
   labelFontSize: 9,
@@ -77,7 +78,7 @@ export function buildMatrix(a, d, userOpts = {}) {
     for (let k = 0; k < K; k++) matrix.appendChild(el('div', { class: 'mc-corner' }));
     matrix.appendChild(el('div', { class: 'mc-corner mc-label', style: labelStyle }, `D${j + 1}`));
     for (let ci = 0; ci < cols.length; ci++) {
-      const text = colPx[ci] >= opts.legibleTrack ? String(cols[ci].tops[j]) : '';
+      const text = colPx[ci] >= opts.digitTrack ? String(cols[ci].tops[j]) : '';
       matrix.appendChild(el('div', { class: 'mc-head' }, text));
     }
   }
@@ -94,7 +95,7 @@ export function buildMatrix(a, d, userOpts = {}) {
     const r = rows[ri];
     const rh = rowPx[ri];
     for (let k = 0; k < K; k++) {
-      const text = rh >= opts.legibleTrack ? String(r.tops[k]) : '';
+      const text = rh >= opts.digitTrack ? String(r.tops[k]) : '';
       matrix.appendChild(el('div', { class: 'mc-rh' }, text));
     }
     const countText = rh >= opts.legibleTrack ? String(r.count) : '';
@@ -157,6 +158,11 @@ export function reduceMatrix(matrix, overlay) {
     }, 0);
   }
 
+  const TWEEN_MS = 3000;
+  const IDEAL_STAGGER_MS = 120;
+  const MAX_BAND_STAGGER_MS = 2500;
+
+  let maxBandStaggerTotal = 0;
   let segY = bodyMinY;
   const segments = [];
   for (const cls of REDUCE_ORDER) {
@@ -168,7 +174,12 @@ export function reduceMatrix(matrix, overlay) {
       return br.w * br.h - ar.w * ar.h;
     });
 
+    const N = byColor[cls].length;
+    const perCellMs = N <= 1 ? 0 : Math.min(IDEAL_STAGGER_MS, MAX_BAND_STAGGER_MS / (N - 1));
+    maxBandStaggerTotal = Math.max(maxBandStaggerTotal, (N - 1) * perCellMs);
+
     let cellY = segY;
+    let i = 0;
     for (const cell of byColor[cls]) {
       const src = cellRects.get(cell);
       const cellArea = src.w * src.h;
@@ -178,14 +189,17 @@ export function reduceMatrix(matrix, overlay) {
       const ty = cellY - src.y;
       const sx = src.w > 0 ? tgtW / src.w : 0;
       const sy = src.h > 0 ? tgtH / src.h : 0;
+      const delay = i * perCellMs;
       cell.style.transformOrigin = '0 0';
       cell.style.transition =
-        'transform 3000ms cubic-bezier(0.4, 0, 0.2, 1), ' +
-        'border-color 1200ms ease, color 800ms ease';
+        `transform ${TWEEN_MS}ms cubic-bezier(0.4, 0, 0.2, 1) ${delay}ms, ` +
+        `border-color 1200ms ease ${delay}ms, ` +
+        `color 800ms ease ${delay}ms`;
       cell.style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
       cell.style.borderColor = 'transparent';
       cell.style.color = 'transparent';
       cellY += tgtH;
+      i++;
     }
     segY += segH;
   }
@@ -194,6 +208,10 @@ export function reduceMatrix(matrix, overlay) {
     h.style.transition = 'opacity 1200ms ease';
     h.style.opacity = '0';
   }
+
+  const totalAnimMs = TWEEN_MS + maxBandStaggerTotal;
+  const overlayDelay = Math.max(0, totalAnimMs - 700);
+  overlay.style.transition = `opacity 600ms ease ${overlayDelay}ms`;
 
   overlay.innerHTML = '';
   overlay.style.left = bodyMinX + 'px';
@@ -215,13 +233,18 @@ export function reduceMatrix(matrix, overlay) {
 }
 
 export function restoreMatrix(matrix, overlay) {
+  overlay.style.transition = 'opacity 250ms ease';
   overlay.classList.remove('shown');
   for (const cell of matrix.querySelectorAll('.mc-cell')) {
+    cell.style.transition =
+      'transform 1200ms cubic-bezier(0.4, 0, 0.2, 1), ' +
+      'border-color 600ms ease, color 600ms ease';
     cell.style.transform = '';
     cell.style.borderColor = '';
     cell.style.color = '';
   }
   for (const h of matrix.querySelectorAll('.mc-corner, .mc-head, .mc-rh')) {
+    h.style.transition = 'opacity 600ms ease';
     h.style.opacity = '';
   }
 }
