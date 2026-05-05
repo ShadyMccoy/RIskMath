@@ -61,14 +61,15 @@ export function mount(root) {
       'X = attacking force · Y = defenders · garrison not counted'),
   ]);
 
+  const sidebar = el('div', { class: 'grid-sidebar' }, [controls, stats]);
+
   root.append(
     el('div', { class: 'panel' }, [
       el('h2', {}, 'Battle Grid'),
       el('p', { class: 'desc' },
         'Hover any cell to see the probability flow when an attacker with X armies engages a defender with Y. ' +
         'Bars on the bottom and left edges show the probability of ending with each survivor count (the “0 army left” terminal squares).'),
-      el('div', { class: 'grid-layout' }, [controls, wrap]),
-      stats,
+      el('div', { class: 'grid-layout' }, [sidebar, wrap]),
       legend,
     ])
   );
@@ -553,18 +554,19 @@ export function mount(root) {
     }
 
     // Side-bar axis titles.
-    ctx.fillStyle = 'rgba(230,237,243,0.55)';
-    ctx.font = '500 10px var(--mono, monospace)';
+    ctx.font = '600 12px var(--mono, monospace)';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('P(attacker survivors | att wins) %', gL + cell + maxAtt * cell / 2, gB + histSize - 12);
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = `rgba(${att.join(',')}, 0.95)`;
+    ctx.fillText('Attacker survivors', gL + cell + maxAtt * cell / 2, gB + histSize - 4);
 
     ctx.save();
-    ctx.translate(10, gB - cell - maxDef * cell / 2);
+    ctx.translate(12, gB - cell - maxDef * cell / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('P(defender survivors | def wins) %', 0, 0);
+    ctx.fillStyle = `rgba(${def.join(',')}, 0.95)`;
+    ctx.fillText('Defender survivors', 0, 0);
     ctx.restore();
   }
 
