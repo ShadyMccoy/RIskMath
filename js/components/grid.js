@@ -554,18 +554,19 @@ export function mount(root) {
     }
 
     // Side-bar axis titles.
-    ctx.fillStyle = 'rgba(230,237,243,0.55)';
-    ctx.font = '500 10px var(--mono, monospace)';
+    ctx.font = '600 12px var(--mono, monospace)';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('P(attacker survivors | att wins) %', gL + cell + maxAtt * cell / 2, gB + histSize - 12);
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = `rgba(${att.join(',')}, 0.95)`;
+    ctx.fillText('Attacker survivors', gL + cell + maxAtt * cell / 2, gB + histSize - 4);
 
     ctx.save();
-    ctx.translate(10, gB - cell - maxDef * cell / 2);
+    ctx.translate(12, gB - cell - maxDef * cell / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('P(defender survivors | def wins) %', 0, 0);
+    ctx.fillStyle = `rgba(${def.join(',')}, 0.95)`;
+    ctx.fillText('Defender survivors', 0, 0);
     ctx.restore();
   }
 
