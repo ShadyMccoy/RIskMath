@@ -105,7 +105,9 @@ export function buildMatrix(a, d, userOpts = {}) {
       const lost = attLossesFor(r.tops, c.tops);
       const cls = lost === 0 ? 'def' : lost === K ? 'att' : 'both';
       const showDigit = rh >= opts.legibleTrack && colPx[ci] >= opts.legibleTrack;
-      matrix.appendChild(el('div', { class: `mc-cell ${cls}` }, showDigit ? String(lost) : ''));
+      const cell = el('div', { class: `mc-cell ${cls}` }, showDigit ? String(lost) : '');
+      cell.dataset.weight = String(r.count * c.count);
+      matrix.appendChild(cell);
     }
   }
 
@@ -130,19 +132,20 @@ export function reduceMatrix(matrix, overlay) {
 
   const cellRects = new Map();
   let bodyMinX = Infinity, bodyMinY = Infinity, bodyMaxX = -Infinity, bodyMaxY = -Infinity;
-  let totalArea = 0;
+  let totalWeight = 0;
   for (const cell of cells) {
     const r = cell.getBoundingClientRect();
     const x = r.left - matrixRect.left;
     const y = r.top - matrixRect.top;
     const w = r.width, h = r.height;
-    cellRects.set(cell, { x, y, w, h });
+    const weight = Number(cell.dataset.weight) || 0;
+    cellRects.set(cell, { x, y, w, h, weight });
     if (w === 0 || h === 0) continue;
     bodyMinX = Math.min(bodyMinX, x);
     bodyMinY = Math.min(bodyMinY, y);
     bodyMaxX = Math.max(bodyMaxX, x + w);
     bodyMaxY = Math.max(bodyMaxY, y + h);
-    totalArea += w * h;
+    totalWeight += weight;
   }
   const bodyW = bodyMaxX - bodyMinX;
   const bodyH = bodyMaxY - bodyMinY;
@@ -155,20 +158,17 @@ export function reduceMatrix(matrix, overlay) {
   const MIN_BAR_H = 280;
   let barW = bodyW;
   let barH = bodyH;
-  if (totalArea > 0 && bodyW < MIN_BAR_W) {
+  if (totalWeight > 0 && bodyW < MIN_BAR_W) {
     barW = MIN_BAR_W;
-    barH = Math.max(MIN_BAR_H, totalArea / barW);
+    barH = Math.max(MIN_BAR_H, (bodyW * bodyH) / barW);
   }
 
   const byColor = { def: [], both: [], att: [] };
   for (const cell of cells) byColor[classifyCell(cell)].push(cell);
 
-  const colorAreas = {};
+  const colorWeights = {};
   for (const cls of REDUCE_ORDER) {
-    colorAreas[cls] = byColor[cls].reduce((s, c) => {
-      const r = cellRects.get(c);
-      return s + r.w * r.h;
-    }, 0);
+    colorWeights[cls] = byColor[cls].reduce((s, c) => s + cellRects.get(c).weight, 0);
   }
 
   const TWEEN_MS = 3000;
@@ -179,13 +179,10 @@ export function reduceMatrix(matrix, overlay) {
   let segY = bodyMinY;
   const segments = [];
   for (const cls of REDUCE_ORDER) {
-    const segH = totalArea > 0 ? (colorAreas[cls] / totalArea) * barH : 0;
-    segments.push({ cls, y: segY, h: segH, p: totalArea > 0 ? colorAreas[cls] / totalArea : 0 });
+    const segH = totalWeight > 0 ? (colorWeights[cls] / totalWeight) * barH : 0;
+    segments.push({ cls, y: segY, h: segH, p: totalWeight > 0 ? colorWeights[cls] / totalWeight : 0 });
 
-    byColor[cls].sort((a, b) => {
-      const ar = cellRects.get(a), br = cellRects.get(b);
-      return br.w * br.h - ar.w * ar.h;
-    });
+    byColor[cls].sort((a, b) => cellRects.get(b).weight - cellRects.get(a).weight);
 
     const N = byColor[cls].length;
     const perCellMs = N <= 1 ? 0 : Math.min(IDEAL_STAGGER_MS, MAX_BAND_STAGGER_MS / (N - 1));
@@ -195,9 +192,8 @@ export function reduceMatrix(matrix, overlay) {
     let i = 0;
     for (const cell of byColor[cls]) {
       const src = cellRects.get(cell);
-      const cellArea = src.w * src.h;
       const tgtW = barW;
-      const tgtH = colorAreas[cls] > 0 ? (cellArea / colorAreas[cls]) * segH : 0;
+      const tgtH = colorWeights[cls] > 0 ? (src.weight / colorWeights[cls]) * segH : 0;
       const tx = bodyMinX - src.x;
       const ty = cellY - src.y;
       const sx = src.w > 0 ? tgtW / src.w : 0;
